@@ -28,6 +28,7 @@ from ocpmodels.common import distutils, mputils
 from ocpmodels.common.data_parallel import (
     BalancedBatchSampler,
     OCPDataParallel,
+    ParallelCollater,
 )
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
@@ -40,7 +41,7 @@ from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
 )
-from ocpmodels.modules.loss import DDPLoss, L2MAELoss
+from ocpmodels.modules.loss import AtomwiseL2Loss, DDPLoss, L2MAELoss
 from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.modules.scheduler import LRScheduler
 
@@ -58,7 +59,6 @@ class BaseTrainer(ABC):
         timestamp_id=None,
         run_dir=None,
         is_debug=False,
-        is_vis=False,
         is_hpo=False,
         print_every=100,
         seed=None,
@@ -68,6 +68,7 @@ class BaseTrainer(ABC):
         cpu=False,
         name="base_trainer",
         slurm={},
+        noddp=False,
     ):
         self.name = name
         self.cpu = cpu
@@ -144,6 +145,7 @@ class BaseTrainer(ABC):
                 "mp_gpus": mputils.get_mp_world_size(),
             },
             "slurm": slurm,
+            "noddp": noddp,
         }
         # AMP Scaler
         self.scaler = torch.cuda.amp.GradScaler() if amp else None
@@ -178,7 +180,6 @@ class BaseTrainer(ABC):
             os.makedirs(self.config["cmd"]["logs_dir"], exist_ok=True)
 
         self.is_debug = is_debug
-        self.is_vis = is_vis
         self.is_hpo = is_hpo
 
         if self.is_hpo:
@@ -202,6 +203,7 @@ class BaseTrainer(ABC):
     def load(self):
         self.load_seed_from_config()
         self.load_logger()
+        self.load_datasets()
         self.load_task()
         self.load_model()
         self.load_loss()
@@ -271,27 +273,92 @@ class BaseTrainer(ABC):
         )
         return loader
 
+    def load_datasets(self):
+        self.parallel_collater = ParallelCollater(
+            0 if self.cpu else 1,
+            self.config["model_attributes"].get("otf_graph", False),
+        )
+
+        self.train_loader = self.val_loader = self.test_loader = None
+
+        if self.config.get("dataset", None):
+            self.train_dataset = registry.get_dataset_class(
+                self.config["task"]["dataset"]
+            )(self.config["dataset"])
+            self.train_sampler = self.get_sampler(
+                self.train_dataset,
+                self.config["optim"]["batch_size"],
+                shuffle=True,
+            )
+            self.train_loader = self.get_dataloader(
+                self.train_dataset,
+                self.train_sampler,
+            )
+
+            if self.config.get("val_dataset", None):
+                self.val_dataset = registry.get_dataset_class(
+                    self.config["task"]["dataset"]
+                )(self.config["val_dataset"])
+                self.val_sampler = self.get_sampler(
+                    self.val_dataset,
+                    self.config["optim"].get(
+                        "eval_batch_size", self.config["optim"]["batch_size"]
+                    ),
+                    shuffle=False,
+                )
+                self.val_loader = self.get_dataloader(
+                    self.val_dataset,
+                    self.val_sampler,
+                )
+
+            if self.config.get("test_dataset", None):
+                self.test_dataset = registry.get_dataset_class(
+                    self.config["task"]["dataset"]
+                )(self.config["test_dataset"])
+                self.test_sampler = self.get_sampler(
+                    self.test_dataset,
+                    self.config["optim"].get(
+                        "eval_batch_size", self.config["optim"]["batch_size"]
+                    ),
+                    shuffle=False,
+                )
+                self.test_loader = self.get_dataloader(
+                    self.test_dataset,
+                    self.test_sampler,
+                )
+
+        # Normalizer for the dataset.
+        # Compute mean, std of training set labels.
+        self.normalizers = {}
+        if self.normalizer.get("normalize_labels", False):
+            if "target_mean" in self.normalizer:
+                self.normalizers["target"] = Normalizer(
+                    mean=self.normalizer["target_mean"],
+                    std=self.normalizer["target_std"],
+                    device=self.device,
+                )
+            else:
+                self.normalizers["target"] = Normalizer(
+                    tensor=self.train_loader.dataset.data.y[
+                        self.train_loader.dataset.__indices__
+                    ],
+                    device=self.device,
+                )
+
     @abstractmethod
     def load_task(self):
-        """Derived classes should implement this function."""
+        """Initialize task-specific information. Derived classes should implement this function."""
 
     def load_model(self):
         # Build model
         if distutils.is_master():
             logging.info(f"Loading model: {self.config['model']}")
 
-        # TODO(abhshkdz): Eventually move towards computing features on-the-fly
-        # and remove dependence from `.edge_attr`.
+        # TODO: depreicated, remove.
         bond_feat_dim = None
-        if self.config["task"]["dataset"] in [
-            "trajectory_lmdb",
-            "single_point_lmdb",
-        ]:
-            bond_feat_dim = self.config["model_attributes"].get(
-                "num_gaussians", 50
-            )
-        else:
-            raise NotImplementedError
+        bond_feat_dim = self.config["model_attributes"].get(
+            "num_gaussians", 50
+        )
 
         loader = self.train_loader or self.val_loader or self.test_loader
         self.model = registry.get_model_class(self.config["model"])(
@@ -319,9 +386,10 @@ class BaseTrainer(ABC):
             output_device=self.device,
             num_gpus=1 if not self.cpu else 0,
         )
-        if distutils.initialized():
+        if distutils.initialized() and not self.config["noddp"]:
             self.model = DistributedDataParallel(
-                self.model, device_ids=[self.device]  #, find_unused_parameters=True
+                self.model,
+                device_ids=[self.device],  # , find_unused_parameters=True
             )
 
     def load_checkpoint(self, checkpoint_path):
@@ -335,12 +403,16 @@ class BaseTrainer(ABC):
         checkpoint = torch.load(checkpoint_path, map_location=map_location)
         self.epoch = checkpoint.get("epoch", 0)
         self.step = checkpoint.get("step", 0)
+        self.best_val_metric = checkpoint.get("best_val_metric", None)
+        self.primary_metric = checkpoint.get("primary_metric", None)
 
         # Load model, optimizer, normalizer state dict.
         # if trained with ddp and want to load in non-ddp, modify keys from
         # module.module.. -> module..
         first_key = next(iter(checkpoint["state_dict"]))
-        if not distutils.initialized() and first_key.split(".")[1] == "module":
+        if (
+            not distutils.initialized() or self.config["noddp"]
+        ) and first_key.split(".")[1] == "module":
             # No need for OrderedDict since dictionaries are technically ordered
             # since Python 3.6 and officially ordered since Python 3.7
             new_dict = {k[7:]: v for k, v in checkpoint["state_dict"].items()}
@@ -381,12 +453,13 @@ class BaseTrainer(ABC):
                 self.loss_fn[loss] = nn.MSELoss()
             elif loss_name == "l2mae":
                 self.loss_fn[loss] = L2MAELoss()
+            elif loss_name == "atomwisel2":
+                self.loss_fn[loss] = AtomwiseL2Loss()
             else:
                 raise NotImplementedError(
                     f"Unknown loss function name: {loss_name}"
                 )
-            if distutils.initialized():
-                self.loss_fn[loss] = DDPLoss(self.loss_fn[loss])
+            self.loss_fn[loss] = DDPLoss(self.loss_fn[loss])
 
     def load_optimizer(self):
         optimizer = self.config["optim"].get("optimizer", "AdamW")
@@ -465,6 +538,11 @@ class BaseTrainer(ABC):
                         "amp": self.scaler.state_dict()
                         if self.scaler
                         else None,
+                        "best_val_metric": self.best_val_metric,
+                        "primary_metric": self.config["task"].get(
+                            "primary_metric",
+                            self.evaluator.task_primary_metric[self.name],
+                        ),
                     },
                     checkpoint_dir=self.config["cmd"]["checkpoint_dir"],
                     checkpoint_file=checkpoint_file,

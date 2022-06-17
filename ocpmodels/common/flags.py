@@ -51,11 +51,6 @@ class Flags:
             help="Directory to store checkpoint/log/result directory",
         )
         self.parser.add_argument(
-            "--vis",
-            action="store_true",
-            help="Whether to visualize a few extra things",
-        )
-        self.parser.add_argument(
             "--print-every",
             default=10,
             type=int,
@@ -112,7 +107,10 @@ class Flags:
             "--distributed", action="store_true", help="Run with DDP"
         )
         self.parser.add_argument(
-            "--mp-gpus", type=int, default=1, help="Number of GPUs for Model Parallel"
+            "--mp-gpus",
+            type=int,
+            default=1,
+            help="Number of GPUs for Model Parallel",
         )
         self.parser.add_argument(
             "--cpu", action="store_true", help="Run CPU only training"
@@ -137,6 +135,9 @@ class Flags:
         )
         self.parser.add_argument(
             "--local_rank", default=0, type=int, help="Local rank"
+        )
+        self.parser.add_argument(
+            "--no-ddp", action="store_true", help="Do not use DDP"
         )
 
 

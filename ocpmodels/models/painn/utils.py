@@ -5,81 +5,8 @@ This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
 
-import json
-
 import torch
 from torch_scatter import segment_csr
-
-
-def read_json(path):
-    """"""
-    if not path.endswith(".json"):
-        raise UserWarning(f"Path {path} is not a json-path.")
-
-    with open(path, "r") as f:
-        content = json.load(f)
-    return content
-
-
-def update_json(path, data):
-    """"""
-    if not path.endswith(".json"):
-        raise UserWarning(f"Path {path} is not a json-path.")
-
-    content = read_json(path)
-    content.update(data)
-    write_json(path, content)
-
-
-def write_json(path, data):
-    """"""
-    if not path.endswith(".json"):
-        raise UserWarning(f"Path {path} is not a json-path.")
-
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-
-def read_value_json(path, key):
-    """"""
-    content = read_json(path)
-
-    if key in content.keys():
-        return content[key]
-    else:
-        return None
-
-
-def ragged_range(sizes):
-    """Multiple concatenated ranges.
-
-    Examples
-    --------
-        sizes = [1 4 2 3]
-        Return: [0  0 1 2 3  0 1  0 1 2]
-    """
-    assert sizes.dim() == 1
-    if sizes.sum() == 0:
-        return sizes.new_empty(0)
-
-    # Remove 0 sizes
-    sizes_nonzero = sizes > 0
-    if not torch.all(sizes_nonzero):
-        sizes = torch.masked_select(sizes, sizes_nonzero)
-
-    # Initialize indexing array with ones as we need to setup incremental indexing
-    # within each group when cumulatively summed at the final stage.
-    id_steps = torch.ones(sizes.sum(), dtype=torch.long, device=sizes.device)
-    id_steps[0] = 0
-    insert_index = sizes[:-1].cumsum(0)
-    insert_val = (1 - sizes)[:-1]
-
-    # Assign index-offsetting values
-    id_steps[insert_index] = insert_val
-
-    # Finally index into input array for the group repeated o/p
-    res = id_steps.cumsum(0)
-    return res
 
 
 def repeat_blocks(
@@ -227,53 +154,15 @@ def repeat_blocks(
     return res
 
 
-def calculate_interatomic_vectors(R, id_s, id_t, offsets_st):
-    """
-    Calculate the vectors connecting the given atom pairs,
-    considering offsets from periodic boundary conditions (PBC).
-
-    Parameters
-    ----------
-        R: Tensor, shape = (nAtoms, 3)
-            Atom positions.
-        id_s: Tensor, shape = (nEdges,)
-            Indices of the source atom of the edges.
-        id_t: Tensor, shape = (nEdges,)
-            Indices of the target atom of the edges.
-        offsets_st: Tensor, shape = (nEdges,)
-            PBC offsets of the edges.
-            Subtract this from the correct direction.
-
-    Returns
-    -------
-        (D_st, V_st): tuple
-            D_st: Tensor, shape = (nEdges,)
-                Distance from atom t to s.
-            V_st: Tensor, shape = (nEdges,)
-                Unit direction from atom t to s.
-    """
-    Rs = R[id_s]
-    Rt = R[id_t]
-    # ReLU prevents negative numbers in sqrt
-    if offsets_st is None:
-        V_st = Rt - Rs  # s -> t
-    else:
-        V_st = Rt - Rs + offsets_st  # s -> t
-    D_st = torch.sqrt(torch.sum(V_st**2, dim=1))
-    V_st = V_st / D_st[..., None]
-    return D_st, V_st
-
-
-def inner_product_normalized(x, y):
-    """
-    Calculate the inner product between the given normalized vectors,
-    giving a result between -1 and 1.
-    """
-    return torch.sum(x * y, dim=-1).clamp(min=-1, max=1)
-
-
-def mask_neighbors(neighbors, edge_mask):
-    neighbors_old_indptr = torch.cat([neighbors.new_zeros(1), neighbors])
-    neighbors_old_indptr = torch.cumsum(neighbors_old_indptr, dim=0)
-    neighbors = segment_csr(edge_mask.long(), neighbors_old_indptr)
-    return neighbors
+def get_edge_id(edge_idx, cell_offsets, num_atoms):
+    cell_basis = cell_offsets.max() - cell_offsets.min() + 1
+    cell_id = (
+        (
+            cell_offsets
+            * cell_offsets.new_tensor([[1, cell_basis, cell_basis**2]])
+        )
+        .sum(-1)
+        .long()
+    )
+    edge_id = edge_idx[0] + edge_idx[1] * num_atoms + cell_id * num_atoms**2
+    return edge_id

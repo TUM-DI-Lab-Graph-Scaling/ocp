@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 
+import deepspeed
 import torch
 import torch.distributed as dist
 
@@ -54,12 +55,17 @@ def setup(config):
                 # ensures GPU0 does not have extra context/higher peak memory
                 torch.cuda.set_device(config["local_rank"])
 
-                dist.init_process_group(
-                    backend=config["distributed_backend"],
-                    init_method=config["init_method"],
-                    world_size=config["world_size"],
-                    rank=config["rank"],
-                )
+                if config["use_deepspeed"]:
+                    deepspeed.init_distributed(
+                        dist_backend=config["distributed_backend"],
+                    )
+                else:
+                    dist.init_process_group(
+                        backend=config["distributed_backend"],
+                        init_method=config["init_method"],
+                        world_size=config["world_size"],
+                        rank=config["rank"],
+                    )
             except subprocess.CalledProcessError as e:  # scontrol failed
                 raise e
             except FileNotFoundError:  # Slurm is not installed

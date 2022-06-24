@@ -14,6 +14,7 @@ import subprocess
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
+import deepspeed
 import numpy as np
 import torch
 import torch.nn as nn
@@ -69,6 +70,7 @@ class BaseTrainer(ABC):
         name="base_trainer",
         slurm={},
         noddp=False,
+        use_deepspeed=False,
     ):
         self.name = name
         self.cpu = cpu
@@ -145,6 +147,7 @@ class BaseTrainer(ABC):
             },
             "slurm": slurm,
             "noddp": noddp,
+            "use_deepspeed": use_deepspeed,
         }
         # AMP Scaler
         self.scaler = torch.cuda.amp.GradScaler() if amp else None
@@ -379,9 +382,12 @@ class BaseTrainer(ABC):
             num_gpus=1 if not self.cpu else 0,
         )
         if distutils.initialized() and not self.config["noddp"]:
-            self.model = DistributedDataParallel(
-                self.model, device_ids=[self.device]
-            )
+            if self.config["use_deepspeed"]:
+                self.model = deepspeed.initialize(model=self.model)
+            else:
+                self.model = DistributedDataParallel(
+                    self.model, device_ids=[self.device]
+                )
 
     def load_checkpoint(self, checkpoint_path):
         if not os.path.isfile(checkpoint_path):

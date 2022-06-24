@@ -383,7 +383,10 @@ class BaseTrainer(ABC):
         )
         if distutils.initialized() and not self.config["noddp"]:
             if self.config["use_deepspeed"]:
-                self.model = deepspeed.initialize(model=self.model)
+                print("Using Deepspeed")
+                self.model = deepspeed.initialize(
+                    config="configs/ds_config.json", model=self.model
+                )
             else:
                 self.model = DistributedDataParallel(
                     self.model, device_ids=[self.device]

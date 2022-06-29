@@ -58,6 +58,9 @@ class Runner(submitit.helpers.Checkpointable):
                 cpu=config.get("cpu", False),
                 slurm=config.get("slurm", {}),
                 noddp=config.get("noddp", False),
+                use_deepspeed=config["use_deepspeed"],
+                deepspeed_mode=config["deepspeed_mode"],
+                deepspeed_config=config["deepspeed_config"]
             )
             self.task = registry.get_task_class(config["mode"])(self.config)
             self.task.setup(self.trainer)

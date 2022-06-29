@@ -11,9 +11,5 @@
   "fp16": {
     "enabled": true
   },
-  "zero_optimization": {
-    "stage": 1,
-    "allgather_partitions": false,
-    "overlap_comm": false,
-  }
+  "zero_optimization": true
 }

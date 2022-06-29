@@ -71,6 +71,8 @@ class BaseTrainer(ABC):
         slurm={},
         noddp=False,
         use_deepspeed=False,
+        deepspeed_mode="None",
+        deepspeed_config=None
     ):
         self.name = name
         self.cpu = cpu
@@ -148,6 +150,8 @@ class BaseTrainer(ABC):
             "slurm": slurm,
             "noddp": noddp,
             "use_deepspeed": use_deepspeed,
+            "deepspeed_mode": deepspeed_mode,
+            "deepspeed_config": deepspeed_config
         }
         # AMP Scaler
         self.scaler = torch.cuda.amp.GradScaler() if amp else None
@@ -211,6 +215,28 @@ class BaseTrainer(ABC):
         self.load_loss()
         self.load_optimizer()
         self.load_extras()
+        if self.config["use_deepspeed"]:
+            self.deepspeed_initialize()
+
+    def deepspeed_initialize(self):
+        """
+        Initialize the deepspeed wrappers for model and optimizer. Depending on the selected mode, 
+        the optimizer is either just the default one from ocp or will be overwritten by Deepspeed.
+        """
+        if self.config["deepspeed_mode"] == "ocp-optimizer":
+            self.model, self.optimizer, _, _ = deepspeed.initialize(
+                    config=self.config["deepspeed_config"], 
+                    model=self.model, model_parameters=self.model.parameters(),
+                    optimizer=self.optimizer
+            )
+        elif self.config["deepspeed_mode"] == "deepspeed-optimizer":
+            self.model, self.optimizer, _, _ = deepspeed.initialize(
+                    config=self.config["deepspeed_config"], 
+                    model=self.model, model_parameters=self.model.parameters()
+            )
+        else:
+            raise NotImplementedError(f'Deepspeed mode {self.config["deepspeed_mode"]} is unknown.')
+        print("Deepspeed model successfully initialized!")
 
     def load_seed_from_config(self):
         # https://pytorch.org/docs/stable/notes/randomness.html
@@ -382,12 +408,7 @@ class BaseTrainer(ABC):
             num_gpus=1 if not self.cpu else 0,
         )
         if distutils.initialized() and not self.config["noddp"]:
-            if self.config["use_deepspeed"]:
-                print("Using Deepspeed")
-                self.model = deepspeed.initialize(
-                    config="configs/ds_config.json", model=self.model
-                )
-            else:
+            if not self.config["use_deepspeed"]:
                 self.model = DistributedDataParallel(
                     self.model, device_ids=[self.device]
                 )

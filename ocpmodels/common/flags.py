@@ -133,6 +133,18 @@ class Flags:
         self.parser.add_argument(
             "--no-ddp", action="store_true", help="Do not use DDP"
         )
+        self.parser.add_argument(
+            "--deepspeed-mode",
+            choices=["ocp-optimizer", "deepspeed-optimizer", "None"],
+            default="None",
+            help="whether to use deepspeed with the ocp optimizer, a deepspeed optimizer or not to use deepspeed"
+        )
+        self.parser.add_argument(
+            "--deepspeed_config",
+            type=Path,
+            default="configs/ds_config.json",
+            help="Path to a config json file for Deepspeed"
+        )
 
 
 flags = Flags()

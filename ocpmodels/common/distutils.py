@@ -57,7 +57,7 @@ def setup(config):
 
                 if config["use_deepspeed"]:
                     deepspeed.init_distributed(
-                        dist_backend=config["distributed_backend"],
+                        dist_backend=config["distributed_backend"]
                     )
                 else:
                     dist.init_process_group(
@@ -90,9 +90,14 @@ def setup(config):
             init_method="env://",
         )
     else:
-        dist.init_process_group(
-            backend=config["distributed_backend"], init_method="env://"
-        )
+        if config["use_deepspeed"]:
+            deepspeed.init_distributed(
+                        dist_backend=config["distributed_backend"], init_method="env://"
+            )
+        else:
+            dist.init_process_group(
+                backend=config["distributed_backend"], init_method="env://"
+            )
     # TODO: SLURM
 
 

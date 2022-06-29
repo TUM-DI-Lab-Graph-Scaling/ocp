@@ -77,7 +77,9 @@ class EnergyTrainer(BaseTrainer):
         cpu=False,
         slurm={},
         noddp=False,
-        use_deepspeed=True,
+        use_deepspeed=False,
+        deepspeed_mode="None",
+        deepspeed_config=None
     ):
         super().__init__(
             task=task,
@@ -100,6 +102,8 @@ class EnergyTrainer(BaseTrainer):
             slurm=slurm,
             noddp=noddp,
             use_deepspeed=use_deepspeed,
+            deepspeed_mode=deepspeed_mode,
+            deepspeed_config=deepspeed_config
         )
 
     def load_task(self):

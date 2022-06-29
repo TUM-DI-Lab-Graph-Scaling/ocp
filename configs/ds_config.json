@@ -1,14 +1,19 @@
 {
-  "train_batch_size": 8,
+  "train_batch_size": 2,
   "gradient_accumulation_steps": 1,
   "optimizer": {
     "type": "Adam",
     "params": {
-      "lr": 0.00015
+      "lr": 0.0001,
+      "freeze_step": 100000
     }
   },
   "fp16": {
     "enabled": true
   },
-  "zero_optimization": true
+  "zero_optimization": {
+    "stage": 1,
+    "allgather_partitions": false,
+    "overlap_comm": false,
+  }
 }

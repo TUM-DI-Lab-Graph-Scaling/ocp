@@ -4,12 +4,11 @@
   "optimizer": {
     "type": "Adam",
     "params": {
-      "lr": 0.0001,
-      "freeze_step": 100000
+      "lr": 0.0001
     }
   },
   "fp16": {
-    "enabled": true
+    "enabled": false
   },
-  "zero_optimization": true
+  "zero_optimization": false
 }

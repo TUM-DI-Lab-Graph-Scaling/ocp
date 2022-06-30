@@ -182,9 +182,9 @@ class CGCNN(BaseModel):
         Returns the output of the convolution layers before they are passed
         into the dense layers.
         """
-        node_feats = self.embedding_fc(data.x)
+        node_feats = self.embedding_fc(data.x.bfloat16()) # TODO
         for f in self.convs:
-            node_feats = f(node_feats, data.edge_index, data.edge_attr)
+            node_feats = f(node_feats.bfloat16(), data.edge_index, data.edge_attr.bfloat16())  # TODO
         mol_feats = global_mean_pool(node_feats, data.batch)
         return mol_feats
 

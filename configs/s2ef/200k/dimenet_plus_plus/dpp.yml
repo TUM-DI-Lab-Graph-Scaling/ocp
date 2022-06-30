@@ -3,8 +3,8 @@ includes:
 
 model:
   name: dimenetplusplus
-  hidden_channels: 192
-  out_emb_channels: 192
+  hidden_channels: 50
+  out_emb_channels: 50  # TODO default 192
   num_blocks: 3
   cutoff: 6.0
   num_radial: 6

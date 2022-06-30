@@ -17,6 +17,7 @@ from tqdm import tqdm
 from ocpmodels.common import distutils
 from ocpmodels.common.registry import registry
 from ocpmodels.modules.normalizer import Normalizer
+from ocpmodels.tracking.metrics_writer import MetricsWriter
 from ocpmodels.trainers.base_trainer import BaseTrainer
 
 
@@ -171,6 +172,10 @@ class EnergyTrainer(BaseTrainer):
         )
         self.best_val_metric = 1e9
 
+        self.metrics_writer = MetricsWriter(
+            self.config["metrics_path"], self.config["model"]["name"]
+        )
+
         # Calculate start_epoch from step instead of loading the epoch number
         # to prevent inconsistencies due to different batch size in checkpoint.
         start_epoch = self.step // len(self.train_loader)
@@ -178,6 +183,7 @@ class EnergyTrainer(BaseTrainer):
         for epoch_int in range(
             start_epoch, self.config["optim"]["max_epochs"]
         ):
+            self.metrics_writer.start_epoch()
             self.train_sampler.set_epoch(epoch_int)
             skip_steps = self.step % len(self.train_loader)
             train_loader_iter = iter(self.train_loader)
@@ -192,10 +198,14 @@ class EnergyTrainer(BaseTrainer):
 
                 # Forward, loss, backward.
                 with torch.cuda.amp.autocast(enabled=self.scaler is not None):
+                    self.metrics_writer.start_forward()
                     out = self._forward(batch)
                     loss = self._compute_loss(out, batch)
+                    self.metrics_writer.end_forward()
                 loss = self.scaler.scale(loss) if self.scaler else loss
+                self.metrics_writer.start_backward()
                 self._backward(loss)
+                self.metrics_writer.end_backward()
                 scale = self.scaler.get_scale() if self.scaler else 1.0
 
                 # Compute metrics.
@@ -285,6 +295,7 @@ class EnergyTrainer(BaseTrainer):
                     self.scheduler.step()
 
             torch.cuda.empty_cache()
+            self.metrics_writer.end_epoch()
 
         self.train_dataset.close_db()
         if self.config.get("val_dataset", False):

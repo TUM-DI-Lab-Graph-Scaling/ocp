@@ -19,12 +19,20 @@ class Phase(Enum):
 
 
 class Profiler:
-    def __init__(self, metrics_path, model_name):
-        self.dir_path = Path(metrics_path) / model_name
+    def __init__(self, config, model_name):
+        assert (
+            "metrics_path" in config
+        ), "Profiler config contains no metrics path."
+        assert (
+            "resource_poll_interval" in config
+        ), "Resource utilization poll interval must be defined."
+
+        self.config = config
+        self.dir_path = Path(self.config["metrics_path"]) / model_name
         self.dir_path.mkdir(parents=True, exist_ok=True)
         self.id = int(time.time())
-        self.runtime_path = self.dir_path / (str(id) + "runtimes.csv")
-        self.resource_path = self.dir_path / (str(id) + "resources.csv")
+        self.runtime_path = self.dir_path / (str(self.id) + "_runtimes.csv")
+        self.resource_path = self.dir_path / (str(self.id) + "_resources.csv")
         self.current_epoch = 0
         self.epoch_timer = Timer()
         self.phase_timers = {
@@ -41,7 +49,7 @@ class Profiler:
 
         if distutils.is_master():
             self.resource_monitor_thread = ResourceMonitorThread(
-                20, self.resource_file
+                self.config["resource_poll_interval"], self.resource_file
             )
             self.resource_monitor_thread.add_monitor(CPUMemoryMonitor())
             self.resource_monitor_thread.add_monitor(GPUMemoryMonitor())

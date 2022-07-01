@@ -17,7 +17,7 @@ class ResourceMonitor:
 
 
 class CPUMemoryMonitor(ResourceMonitor):
-    def measure(self):
+    def measure(self) -> List[float]:
         mem = psutil.virtual_memory()
         return [mem.used, mem.free]
 
@@ -26,11 +26,12 @@ class GPUMemoryMonitor(ResourceMonitor):
     def __init__(self):
         self.nvsmi = nvidia_smi.getInstance()
 
-    def measure(self):
+    def measure(self) -> List[float]:
         gpu_stats = []
         for gpu in self.nvsmi.DeviceQuery("memory.used,memory.free")["gpu"]:
             gpu_stats.append(gpu["fb_memory_usage"]["used"])
             gpu_stats.append(gpu["fb_memory_usage"]["free"])
+        return gpu_stats
 
 
 class ResourceMonitorThread(Thread):
@@ -47,8 +48,7 @@ class ResourceMonitorThread(Thread):
     def run(self) -> None:
         while not self.stop:
             if self.log_results:
-                for m in self.monitors:
-                    m.measure()
+                self.eval_monitors()
             time.sleep(self.delay)
 
     def add_monitor(self, monitor: ResourceMonitor):

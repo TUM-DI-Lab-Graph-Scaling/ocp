@@ -31,4 +31,6 @@ optim:
   warmup_factor: 0.2
   max_epochs: 20
 
-metrics_path: metrics
+profiler:
+  metrics_path: metrics
+  resource_poll_interval: 20

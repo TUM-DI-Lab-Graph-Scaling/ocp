@@ -83,7 +83,7 @@ class EnergyTrainer(BaseTrainer):
         cpu=False,
         slurm={},
         noddp=False,
-        metrics_path="metrics",
+        profiler={"metrics_path": "metrics", "resource_poll_time": 20},
     ):
         super().__init__(
             task=task,
@@ -105,7 +105,7 @@ class EnergyTrainer(BaseTrainer):
             name="is2re",
             slurm=slurm,
             noddp=noddp,
-            metrics_path=metrics_path,
+            profiler=profiler,
         )
 
     def load_task(self):
@@ -180,7 +180,7 @@ class EnergyTrainer(BaseTrainer):
         self.best_val_metric = 1e9
 
         with Profiler(
-            self.config["metrics_path"], self.config["model"]
+            self.config["profiler"], self.config["model"]
         ) as profiler:
 
             # Calculate start_epoch from step instead of loading the epoch number

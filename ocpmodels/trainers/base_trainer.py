@@ -69,7 +69,7 @@ class BaseTrainer(ABC):
         name="base_trainer",
         slurm={},
         noddp=False,
-        metrics_path="metrics",
+        profiler={"metrics_path": "metrics", "resource_poll_time": 20},
     ):
         self.name = name
         self.cpu = cpu
@@ -146,7 +146,7 @@ class BaseTrainer(ABC):
             },
             "slurm": slurm,
             "noddp": noddp,
-            "metrics_path": metrics_path,
+            "profiler": profiler,
         }
         # AMP Scaler
         self.scaler = torch.cuda.amp.GradScaler() if amp else None

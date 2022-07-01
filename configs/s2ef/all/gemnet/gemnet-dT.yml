@@ -53,3 +53,7 @@ optim:
   clip_grad_norm: 10
   loss_energy: mae
   loss_force: l2mae
+
+profiler:
+  metrics_path: metrics
+  resource_poll_interval: 180

@@ -180,7 +180,7 @@ class EnergyTrainer(BaseTrainer):
         self.best_val_metric = 1e9
 
         with Profiler(
-            self.config["profiler"], self.config["model"]
+            self.config["profiler"], type(self), self.config["model"]
         ) as profiler:
 
             # Calculate start_epoch from step instead of loading the epoch number

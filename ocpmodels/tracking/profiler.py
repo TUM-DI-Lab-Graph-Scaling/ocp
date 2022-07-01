@@ -19,7 +19,7 @@ class Phase(Enum):
 
 
 class Profiler:
-    def __init__(self, config, model_name):
+    def __init__(self, config, trainer, model_name):
         assert (
             "metrics_path" in config
         ), "Profiler config contains no metrics path."
@@ -28,7 +28,10 @@ class Profiler:
         ), "Resource utilization poll interval must be defined."
 
         self.config = config
-        self.dir_path = Path(self.config["metrics_path"]) / model_name
+        task_name = "is2re" if trainer.__name__ == "EnergyTrainer" else "s2ef"
+        self.dir_path = (
+            Path(self.config["metrics_path"]) / task_name / model_name
+        )
         self.dir_path.mkdir(parents=True, exist_ok=True)
         self.id = int(time.time())
         self.runtime_path = self.dir_path / (str(self.id) + "_runtimes.csv")

@@ -44,7 +44,7 @@ optim:
     - 345246
   warmup_steps: 57541
   warmup_factor: 0.2
-  max_epochs: 5
+  max_epochs: 7
 
 profiler:
   metrics_path: metrics

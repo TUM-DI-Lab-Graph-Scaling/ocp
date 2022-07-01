@@ -22,9 +22,10 @@ class Profiler:
     def __init__(self, metrics_path, model_name):
         self.dir_path = Path(metrics_path) / model_name
         self.dir_path.mkdir(parents=True, exist_ok=True)
-        self.path = self.dir_path / (str(int(time.time())) + ".csv")
-        self.file = open(self.path, "a")
-        self.writer = csv.writer(self.file, delimiter=",")
+        self.id = int(time.time())
+        self.runtime_path = self.dir_path / (str(id) + "runtimes.csv")
+        self.resource_path = self.dir_path / (str(id) + "resources.csv")
+        self.current_epoch = 0
         self.epoch_timer = Timer()
         self.phase_timers = {
             Phase.DATALOADING: Timer(),
@@ -32,30 +33,43 @@ class Profiler:
             Phase.BACKWARD: Timer(),
         }
 
-        # self.resource_monitor_thread = ResourceMonitorThread(1)
-        # self.resource_monitor_thread.add_monitor(CPUMemoryMonitor())
-        # self.resource_monitor_thread.add_monitor(GPUMemoryMonitor(distutils.get_world_size()))
-        # self.resource_monitor_thread.start()
+    def __enter__(self):
+        self.runtime_file = open(self.runtime_path, "a")
+        self.resource_file = open(self.resource_path, "a")
+
+        self.runtime_writer = csv.writer(self.runtime_file, delimiter=",")
+
+        if distutils.is_master():
+            self.resource_monitor_thread = ResourceMonitorThread(
+                20, self.resource_file
+            )
+            self.resource_monitor_thread.add_monitor(CPUMemoryMonitor())
+            self.resource_monitor_thread.add_monitor(GPUMemoryMonitor())
+            self.resource_monitor_thread.start()
+        return self
 
     def write_stats(self):
-        # monitor_stats = self.resource_monitor_thread.eval_monitors()
         row = [distutils.get_rank(), self.epoch_timer.elapsed()]
         row.extend([t.elapsed() for t in self.phase_timers.values()])
-        # row.extend(monitor_stats)
-        self.writer.writerow(row)
-        self.file.flush()
+        self.runtime_writer.writerow(row)
+        self.runtime_file.flush()
 
         self.epoch_timer.reset()
         for t in self.phase_timers.values():
             t.reset()
 
     def start_epoch(self):
-        # self.resource_monitor_thread.reset()
+        if distutils.is_master():
+            self.resource_monitor_thread.epoch = self.current_epoch
+            self.resource_monitor_thread.log_results = True
         self.epoch_timer.start()
 
     def end_epoch(self):
         self.epoch_timer.stop()
+        if distutils.is_master():
+            self.resource_monitor_thread.log_results = False
         self.write_stats()
+        self.current_epoch += 1
 
     def start_phase(self, phase):
         self.phase_timers[phase].start()
@@ -63,5 +77,9 @@ class Profiler:
     def end_phase(self, phase):
         self.phase_timers[phase].stop()
 
-    def close(self):
-        self.file.close()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.runtime_file.close()
+        self.resource_file.close()
+        if distutils.is_master():
+            self.resource_monitor_thread.stop = True
+            self.resource_monitor_thread.join(20)

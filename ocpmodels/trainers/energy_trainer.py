@@ -179,133 +179,143 @@ class EnergyTrainer(BaseTrainer):
         )
         self.best_val_metric = 1e9
 
-        self.profiler = Profiler(
+        with Profiler(
             self.config["metrics_path"], self.config["model"]
-        )
+        ) as profiler:
 
-        # Calculate start_epoch from step instead of loading the epoch number
-        # to prevent inconsistencies due to different batch size in checkpoint.
-        start_epoch = self.step // len(self.train_loader)
+            # Calculate start_epoch from step instead of loading the epoch number
+            # to prevent inconsistencies due to different batch size in checkpoint.
+            start_epoch = self.step // len(self.train_loader)
 
-        for epoch_int in range(
-            start_epoch, self.config["optim"]["max_epochs"]
-        ):
-            self.profiler.start_epoch()
+            for epoch_int in range(
+                start_epoch, self.config["optim"]["max_epochs"]
+            ):
+                profiler.start_epoch()
 
-            self.train_sampler.set_epoch(epoch_int)
-            skip_steps = self.step % len(self.train_loader)
-            train_loader_iter = iter(self.train_loader)
+                self.train_sampler.set_epoch(epoch_int)
+                skip_steps = self.step % len(self.train_loader)
+                train_loader_iter = iter(self.train_loader)
 
-            for i in range(skip_steps, len(self.train_loader)):
-                self.epoch = epoch_int + (i + 1) / len(self.train_loader)
-                self.step = epoch_int * len(self.train_loader) + i + 1
-                self.model.train()
+                for i in range(skip_steps, len(self.train_loader)):
+                    self.epoch = epoch_int + (i + 1) / len(self.train_loader)
+                    self.step = epoch_int * len(self.train_loader) + i + 1
+                    self.model.train()
 
-                # Get a batch.
-                self.profiler.start_phase(Phase.DATALOADING)
-                batch = next(train_loader_iter)
-                self.profiler.end_phase(Phase.DATALOADING)
+                    # Get a batch.
+                    profiler.start_phase(Phase.DATALOADING)
+                    batch = next(train_loader_iter)
+                    profiler.end_phase(Phase.DATALOADING)
 
-                # Forward, loss, backward.
-                with torch.cuda.amp.autocast(enabled=self.scaler is not None):
-                    self.profiler.start_phase(Phase.FORWARD)
-                    out = self._forward(batch)
-                    self.profiler.end_phase(Phase.FORWARD)
-                    loss = self._compute_loss(out, batch)
-                loss = self.scaler.scale(loss) if self.scaler else loss
-                self.profiler.start_phase(Phase.BACKWARD)
-                self._backward(loss)
-                self.profiler.end_phase(Phase.BACKWARD)
-                scale = self.scaler.get_scale() if self.scaler else 1.0
+                    # Forward, loss, backward.
+                    with torch.cuda.amp.autocast(
+                        enabled=self.scaler is not None
+                    ):
+                        profiler.start_phase(Phase.FORWARD)
+                        out = self._forward(batch)
+                        profiler.end_phase(Phase.FORWARD)
+                        loss = self._compute_loss(out, batch)
+                    loss = self.scaler.scale(loss) if self.scaler else loss
+                    profiler.start_phase(Phase.BACKWARD)
+                    self._backward(loss)
+                    profiler.end_phase(Phase.BACKWARD)
+                    scale = self.scaler.get_scale() if self.scaler else 1.0
 
-                # Compute metrics.
-                self.metrics = self._compute_metrics(
-                    out,
-                    batch,
-                    self.evaluator,
-                    metrics={},
-                )
-                self.metrics = self.evaluator.update(
-                    "loss", loss.item() / scale, self.metrics
-                )
+                    # Compute metrics.
+                    self.metrics = self._compute_metrics(
+                        out,
+                        batch,
+                        self.evaluator,
+                        metrics={},
+                    )
+                    self.metrics = self.evaluator.update(
+                        "loss", loss.item() / scale, self.metrics
+                    )
 
-                # Log metrics.
-                log_dict = {k: self.metrics[k]["metric"] for k in self.metrics}
-                log_dict.update(
-                    {
-                        "lr": self.scheduler.get_lr(),
-                        "epoch": self.epoch,
-                        "step": self.step,
+                    # Log metrics.
+                    log_dict = {
+                        k: self.metrics[k]["metric"] for k in self.metrics
                     }
-                )
-                if (
-                    self.step % self.config["cmd"]["print_every"] == 0
-                    and distutils.is_master()
-                    and not self.is_hpo
-                ):
-                    log_str = [
-                        "{}: {:.2e}".format(k, v) for k, v in log_dict.items()
-                    ]
-                    print(", ".join(log_str))
-                    self.metrics = {}
-
-                if self.logger is not None:
-                    self.logger.log(
-                        log_dict,
-                        step=self.step,
-                        split="train",
+                    log_dict.update(
+                        {
+                            "lr": self.scheduler.get_lr(),
+                            "epoch": self.epoch,
+                            "step": self.step,
+                        }
                     )
+                    if (
+                        self.step % self.config["cmd"]["print_every"] == 0
+                        and distutils.is_master()
+                        and not self.is_hpo
+                    ):
+                        log_str = [
+                            "{}: {:.2e}".format(k, v)
+                            for k, v in log_dict.items()
+                        ]
+                        print(", ".join(log_str))
+                        self.metrics = {}
 
-                # Evaluate on val set after every `eval_every` iterations.
-                if self.step % eval_every == 0:
-                    self.save(
-                        checkpoint_file="checkpoint.pt", training_state=True
-                    )
-
-                    if self.val_loader is not None:
-                        val_metrics = self.validate(
-                            split="val",
-                            disable_tqdm=disable_eval_tqdm,
+                    if self.logger is not None:
+                        self.logger.log(
+                            log_dict,
+                            step=self.step,
+                            split="train",
                         )
-                        if (
-                            val_metrics[
-                                self.evaluator.task_primary_metric[self.name]
-                            ]["metric"]
-                            < self.best_val_metric
-                        ):
-                            self.best_val_metric = val_metrics[
-                                self.evaluator.task_primary_metric[self.name]
-                            ]["metric"]
-                            self.save(
-                                metrics=val_metrics,
-                                checkpoint_file="best_checkpoint.pt",
-                                training_state=False,
+
+                    # Evaluate on val set after every `eval_every` iterations.
+                    if self.step % eval_every == 0:
+                        self.save(
+                            checkpoint_file="checkpoint.pt",
+                            training_state=True,
+                        )
+
+                        if self.val_loader is not None:
+                            val_metrics = self.validate(
+                                split="val",
+                                disable_tqdm=disable_eval_tqdm,
                             )
-                            if self.test_loader is not None:
-                                self.predict(
-                                    self.test_loader,
-                                    results_file="predictions",
-                                    disable_tqdm=False,
+                            if (
+                                val_metrics[
+                                    self.evaluator.task_primary_metric[
+                                        self.name
+                                    ]
+                                ]["metric"]
+                                < self.best_val_metric
+                            ):
+                                self.best_val_metric = val_metrics[
+                                    self.evaluator.task_primary_metric[
+                                        self.name
+                                    ]
+                                ]["metric"]
+                                self.save(
+                                    metrics=val_metrics,
+                                    checkpoint_file="best_checkpoint.pt",
+                                    training_state=False,
+                                )
+                                if self.test_loader is not None:
+                                    self.predict(
+                                        self.test_loader,
+                                        results_file="predictions",
+                                        disable_tqdm=False,
+                                    )
+
+                            if self.is_hpo:
+                                self.hpo_update(
+                                    self.epoch,
+                                    self.step,
+                                    self.metrics,
+                                    val_metrics,
                                 )
 
-                        if self.is_hpo:
-                            self.hpo_update(
-                                self.epoch,
-                                self.step,
-                                self.metrics,
-                                val_metrics,
+                    if self.scheduler.scheduler_type == "ReduceLROnPlateau":
+                        if self.step % eval_every == 0:
+                            self.scheduler.step(
+                                metrics=val_metrics[primary_metric]["metric"],
                             )
+                    else:
+                        self.scheduler.step()
 
-                if self.scheduler.scheduler_type == "ReduceLROnPlateau":
-                    if self.step % eval_every == 0:
-                        self.scheduler.step(
-                            metrics=val_metrics[primary_metric]["metric"],
-                        )
-                else:
-                    self.scheduler.step()
-
-            torch.cuda.empty_cache()
-            self.profiler.end_epoch()
+                torch.cuda.empty_cache()
+                profiler.end_epoch()
 
         self.train_dataset.close_db()
         if self.config.get("val_dataset", False):

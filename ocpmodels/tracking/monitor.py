@@ -25,7 +25,6 @@ class CPUMemoryMonitor(ResourceMonitor):
 class GPUMemoryMonitor(ResourceMonitor):
     def __init__(self):
         self.nvsmi = nvidia_smi.getInstance()
-        self.num_gpus = len(self.nvsmi.DeviceQuery("name")["gpu"])
 
     def measure(self):
         gpu_stats = []
@@ -42,12 +41,14 @@ class ResourceMonitorThread(Thread):
         self.stop = False
         self.delay = delay
         self.current_epoch = 0
+        self.log_results = False
         self.monitors: List[ResourceMonitor] = []
 
     def run(self) -> None:
         while not self.stop:
-            for m in self.monitors:
-                m.measure()
+            if self.log_results:
+                for m in self.monitors:
+                    m.measure()
             time.sleep(self.delay)
 
     def add_monitor(self, monitor: ResourceMonitor):

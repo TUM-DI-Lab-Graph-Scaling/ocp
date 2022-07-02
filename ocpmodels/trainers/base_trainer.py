@@ -391,6 +391,7 @@ class BaseTrainer(ABC):
             bond_feat_dim,
             self.num_targets,
             **self.config["model_attributes"],
+            deepspeed_config=self.config["deepspeed_config"]
         ).to(self.device)
 
         if distutils.is_master():
@@ -709,7 +710,7 @@ class BaseTrainer(ABC):
 
     def _backward(self, loss):
         self.optimizer.zero_grad()
-        self.model.backward(loss)  # TODO
+        self.model.backward(loss)
         # Scale down the gradients of shared parameters
         if hasattr(self.model.module, "shared_parameters"):
             for p, factor in self.model.module.shared_parameters:

@@ -9,11 +9,13 @@ import torch.nn as nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, num_atoms=None, bond_feat_dim=None, num_targets=None):
+
+    def __init__(self, num_atoms=None, bond_feat_dim=None, num_targets=None, deepspeed_config=None):
         super(BaseModel, self).__init__()
         self.num_atoms = num_atoms
         self.bond_feat_dim = bond_feat_dim
         self.num_targets = num_targets
+        self.deepspeed_config = deepspeed_config
 
     def forward(self, data):
         raise NotImplementedError

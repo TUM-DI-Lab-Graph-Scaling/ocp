@@ -55,7 +55,7 @@ def setup(config):
                 # ensures GPU0 does not have extra context/higher peak memory
                 torch.cuda.set_device(config["local_rank"])
 
-                if config["use_deepspeed"]:
+                if config["deepspeed_config"]:
                     deepspeed.init_distributed(
                         dist_backend=config["distributed_backend"]
                     )
@@ -90,9 +90,9 @@ def setup(config):
             init_method="env://",
         )
     else:
-        if config["use_deepspeed"]:
+        if config["deepspeed_config"]:
             deepspeed.init_distributed(
-                        dist_backend=config["distributed_backend"], init_method="env://"
+                dist_backend=config["distributed_backend"], init_method="env://"
             )
         else:
             dist.init_process_group(

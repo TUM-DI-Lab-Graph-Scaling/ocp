@@ -16,6 +16,7 @@ from collections import defaultdict
 
 import deepspeed
 import numpy as np
+from sklearn.metrics import log_loss
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -70,8 +71,6 @@ class BaseTrainer(ABC):
         name="base_trainer",
         slurm={},
         noddp=False,
-        use_deepspeed=False,
-        deepspeed_mode="None",
         deepspeed_config=None
     ):
         self.name = name
@@ -149,8 +148,6 @@ class BaseTrainer(ABC):
             },
             "slurm": slurm,
             "noddp": noddp,
-            "use_deepspeed": use_deepspeed,
-            "deepspeed_mode": deepspeed_mode,
             "deepspeed_config": deepspeed_config
         }
         # AMP Scaler
@@ -215,27 +212,27 @@ class BaseTrainer(ABC):
         self.load_loss()
         self.load_optimizer()
         self.load_extras()
-        if self.config["use_deepspeed"]:
+        if self.config["deepspeed_config"]:
             self.deepspeed_initialize()
 
     def deepspeed_initialize(self):
         """
-        Initialize the deepspeed wrappers for model and optimizer. Depending on the selected mode, 
-        the optimizer is either just the default one from ocp or will be overwritten by Deepspeed.
+        Initialize the DeepSpeed wrappers for model and optimizer. Depending on the selected mode, 
+        the optimizer is either just the default one from ocp or will be overwritten by DeepSpeed.
         """
-        if self.config["deepspeed_mode"] == "ocp-optimizer":
-            self.model, self.optimizer, _, _ = deepspeed.initialize(
+        with open(self.config["deepspeed_config"], "r") as config_file:
+            config = json.load(config_file)
+            if "optimizer" in config:
+                self.model, self.optimizer, _, _ = deepspeed.initialize(
+                    config=self.config["deepspeed_config"], 
+                    model=self.model, model_parameters=self.model.parameters()
+            )
+            else:
+                self.model, self.optimizer, _, _ = deepspeed.initialize(
                     config=self.config["deepspeed_config"], 
                     model=self.model, model_parameters=self.model.parameters(),
                     optimizer=self.optimizer
             )
-        elif self.config["deepspeed_mode"] == "deepspeed-optimizer":
-            self.model, self.optimizer, _, _ = deepspeed.initialize(
-                    config=self.config["deepspeed_config"], 
-                    model=self.model, model_parameters=self.model.parameters()
-            )
-        else:
-            raise NotImplementedError(f'Deepspeed mode {self.config["deepspeed_mode"]} is unknown.')
         print("Deepspeed model successfully initialized!")
 
     def load_seed_from_config(self):
@@ -408,11 +405,10 @@ class BaseTrainer(ABC):
             output_device=self.device,
             num_gpus=1 if not self.cpu else 0,
         )
-        if distutils.initialized() and not self.config["noddp"]:
-            if not self.config["use_deepspeed"]:
-                self.model = DistributedDataParallel(
-                    self.model, device_ids=[self.device]
-                )
+        if distutils.initialized() and not self.config["noddp"] and not self.config["deepspeed_config"]:
+            self.model = DistributedDataParallel(
+                self.model, device_ids=[self.device]
+            )
 
     def load_checkpoint(self, checkpoint_path):
         if not os.path.isfile(checkpoint_path):
@@ -710,10 +706,10 @@ class BaseTrainer(ABC):
 
     def _backward(self, loss):
         self.optimizer.zero_grad()
-        if self.config["deepspeed_config"] is None:
-            loss.backward()
-        else:
+        if self.config["deepspeed_config"]:
             self.model.backward(loss)
+        else:
+            loss.backward()
         # Scale down the gradients of shared parameters
         if hasattr(self.model.module, "shared_parameters"):
             for p, factor in self.model.module.shared_parameters:

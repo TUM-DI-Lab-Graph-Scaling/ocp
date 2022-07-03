@@ -409,8 +409,6 @@ def build_config(args, args_override):
     config["distributed_backend"] = args.distributed_backend
     config["noddp"] = args.no_ddp
     # Deepspeed
-    config["use_deepspeed"] = False if args.deepspeed_mode == "None" else True
-    config["deepspeed_mode"] = args.deepspeed_mode
     config["deepspeed_config"] = args.deepspeed_config
 
     return config

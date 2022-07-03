@@ -83,8 +83,6 @@ class ForcesTrainer(BaseTrainer):
         cpu=False,
         slurm={},
         noddp=False,
-        use_deepspeed=False,
-        deepspeed_mode="None",
         deepspeed_config=None
     ):
         super().__init__(
@@ -107,8 +105,6 @@ class ForcesTrainer(BaseTrainer):
             name="s2ef",
             slurm=slurm,
             noddp=noddp,
-            use_deepspeed=use_deepspeed,
-            deepspeed_mode=deepspeed_mode,
             deepspeed_config=deepspeed_config
         )
 

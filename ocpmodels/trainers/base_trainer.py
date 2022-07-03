@@ -710,7 +710,10 @@ class BaseTrainer(ABC):
 
     def _backward(self, loss):
         self.optimizer.zero_grad()
-        self.model.backward(loss)
+        if self.config["deepspeed_config"] is None:
+            loss.backward()
+        else:
+            self.model.backward(loss)
         # Scale down the gradients of shared parameters
         if hasattr(self.model.module, "shared_parameters"):
             for p, factor in self.model.module.shared_parameters:

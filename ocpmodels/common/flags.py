@@ -142,7 +142,7 @@ class Flags:
         self.parser.add_argument(
             "--deepspeed-config",
             type=Path,
-            default="configs/ds_config.json",
+            default=None,
             help="Path to a config json file for Deepspeed"
         )
 

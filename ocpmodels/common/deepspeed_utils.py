@@ -42,6 +42,3 @@ def deepspeed_type_converter(x, deepspeed_config=None):
                 return x.bfloat16()
             else:
                 return x
-
-
-

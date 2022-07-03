@@ -16,11 +16,11 @@ from collections import defaultdict
 
 import deepspeed
 import numpy as np
-from sklearn.metrics import log_loss
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import yaml
+from sklearn.metrics import log_loss
 from torch.nn.parallel.distributed import DistributedDataParallel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -71,7 +71,7 @@ class BaseTrainer(ABC):
         name="base_trainer",
         slurm={},
         noddp=False,
-        deepspeed_config=None
+        deepspeed_config=None,
     ):
         self.name = name
         self.cpu = cpu
@@ -148,7 +148,7 @@ class BaseTrainer(ABC):
             },
             "slurm": slurm,
             "noddp": noddp,
-            "deepspeed_config": deepspeed_config
+            "deepspeed_config": deepspeed_config,
         }
         # AMP Scaler
         self.scaler = torch.cuda.amp.GradScaler() if amp else None
@@ -217,23 +217,25 @@ class BaseTrainer(ABC):
 
     def deepspeed_initialize(self):
         """
-        Initialize the DeepSpeed wrappers for model and optimizer. Depending on the selected mode, 
+        Initialize the DeepSpeed wrappers for model and optimizer. Depending on the selected mode,
         the optimizer is either just the default one from ocp or will be overwritten by DeepSpeed.
         """
         with open(self.config["deepspeed_config"], "r") as config_file:
             config = json.load(config_file)
             if "optimizer" in config:
                 self.model, self.optimizer, _, _ = deepspeed.initialize(
-                    config=self.config["deepspeed_config"], 
-                    model=self.model, model_parameters=self.model.parameters()
-            )
+                    config=self.config["deepspeed_config"],
+                    model=self.model,
+                    model_parameters=self.model.parameters(),
+                )
             else:
                 self.model, self.optimizer, _, _ = deepspeed.initialize(
-                    config=self.config["deepspeed_config"], 
-                    model=self.model, model_parameters=self.model.parameters(),
-                    optimizer=self.optimizer
-            )
-        print("Deepspeed model successfully initialized!")
+                    config=self.config["deepspeed_config"],
+                    model=self.model,
+                    model_parameters=self.model.parameters(),
+                    optimizer=self.optimizer,
+                )
+        logging.info("Deepspeed model successfully initialized!")
 
     def load_seed_from_config(self):
         # https://pytorch.org/docs/stable/notes/randomness.html
@@ -388,7 +390,7 @@ class BaseTrainer(ABC):
             bond_feat_dim,
             self.num_targets,
             **self.config["model_attributes"],
-            deepspeed_config=self.config["deepspeed_config"]
+            deepspeed_config=self.config["deepspeed_config"],
         ).to(self.device)
 
         if distutils.is_master():
@@ -405,7 +407,11 @@ class BaseTrainer(ABC):
             output_device=self.device,
             num_gpus=1 if not self.cpu else 0,
         )
-        if distutils.initialized() and not self.config["noddp"] and not self.config["deepspeed_config"]:
+        if (
+            distutils.initialized()
+            and not self.config["noddp"]
+            and not self.config["deepspeed_config"]
+        ):
             self.model = DistributedDataParallel(
                 self.model, device_ids=[self.device]
             )

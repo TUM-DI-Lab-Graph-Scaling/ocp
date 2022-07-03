@@ -4,6 +4,7 @@ Copyright (c) Facebook, Inc. and its affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+import logging
 import math
 import time
 from math import pi as PI
@@ -64,8 +65,9 @@ class spinconv(BaseModel):
         readout="add",
         num_rand_rotations=5,
         scale_distances=True,
+        deepspeed_config=None,
     ):
-        super(spinconv, self).__init__()
+        super(spinconv, self).__init__(deepspeed_config=deepspeed_config)
 
         self.num_targets = num_targets
         self.num_random_rotations = num_rand_rotations
@@ -97,6 +99,12 @@ class spinconv(BaseModel):
             assert self.lmax, "lmax must be defined for spherical harmonics"
         if self.output_message in ["spharm", "rotspharmroll", "rotspharmwd"]:
             assert self.lmax, "lmax must be defined for spherical harmonics"
+
+        # DeepSpeed is currently not supported
+        if self.deepspeed_config:
+            logging.warning(
+                "DeepSpeed is currently not supported for SpinConv!"
+            )
 
         # variables used for display purposes
         self.counter = 0

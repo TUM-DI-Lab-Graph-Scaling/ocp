@@ -95,9 +95,7 @@ class PaiNN(ScaledModule):
 
         # DeepSpeed is currently not supported
         if self.deepspeed_config:
-            logging.warning(
-                "DeepSpeed is currently not supported for SpinConv!"
-            )
+            logging.warning("DeepSpeed is currently not supported for PaiNN!")
 
         # Borrowed from GemNet.
         self.symmetric_edge_symmetrization = False

@@ -1,5 +1,5 @@
 {
-  "train_batch_size": 12,
+  "train_batch_size": 3,
   "gradient_accumulation_steps": 1,
   "fp16": {
     "enabled": false

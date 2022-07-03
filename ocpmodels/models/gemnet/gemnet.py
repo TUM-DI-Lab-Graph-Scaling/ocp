@@ -133,6 +133,7 @@ class GemNetT(torch.nn.Module):
         output_init: str = "HeOrthogonal",
         activation: str = "swish",
         scale_file: Optional[str] = None,
+        deepspeed_config=None,
     ):
         super().__init__()
         self.num_targets = num_targets
@@ -149,6 +150,8 @@ class GemNetT(torch.nn.Module):
         self.regress_forces = regress_forces
         self.otf_graph = otf_graph
         self.use_pbc = use_pbc
+
+        self.deepspeed_config = deepspeed_config
 
         AutomaticFit.reset()  # make sure that queue is empty (avoid potential error)
 

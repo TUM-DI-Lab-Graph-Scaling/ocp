@@ -47,6 +47,7 @@ from torch_geometric.nn.models.dimenet import (
 from torch_scatter import scatter
 from torch_sparse import SparseTensor
 
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed_data
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     conditional_grad,
@@ -244,7 +245,7 @@ class DimeNetPlusPlus(torch.nn.Module):
         num_after_skip=2,
         num_output_layers=3,
         act=swish,
-        deepspeed_config=None
+        deepspeed_config=None,
     ):
         super(DimeNetPlusPlus, self).__init__()
 
@@ -359,7 +360,7 @@ class DimeNetPlusPlusWrap(DimeNetPlusPlus):
         num_before_skip=1,
         num_after_skip=2,
         num_output_layers=3,
-        deepspeed_config=None
+        deepspeed_config=None,
     ):
         self.num_targets = num_targets
         self.regress_forces = regress_forces
@@ -381,7 +382,7 @@ class DimeNetPlusPlusWrap(DimeNetPlusPlus):
             num_before_skip=num_before_skip,
             num_after_skip=num_after_skip,
             num_output_layers=num_output_layers,
-            deepspeed_config=deepspeed_config
+            deepspeed_config=deepspeed_config,
         )
 
     @conditional_grad(torch.enable_grad())
@@ -443,6 +444,11 @@ class DimeNetPlusPlusWrap(DimeNetPlusPlus):
         a = (pos_ji * pos_kj).sum(dim=-1)
         b = torch.cross(pos_ji, pos_kj).norm(dim=-1)
         angle = torch.atan2(b, a)
+
+        # Initialize data for DeepSpeed
+        dist, angle = initialize_deepspeed_data(
+            dist, angle, deepspeed_config=self.deepspeed_config
+        )
 
         rbf = self.rbf(dist)
         sbf = self.sbf(dist, angle, idx_kj)

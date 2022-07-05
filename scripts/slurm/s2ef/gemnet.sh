@@ -1,10 +1,10 @@
-#!/bin/sh
-#SBATCH --mincpus=64
+#!/bin/bash
+#SBATCH --mincpus=128
 #SBATCH --mem=500gb
-#SBATCH --gpus=8
-#SBATCH --time=1:00:00
+#SBATCH --gres=gpu:8
+#SBATCH --time=8:00:00
 #SBATCH --nodelist=lundquist
-#SBATCH --job-name="OCP-S2EF-gemnet"
+#SBATCH --job-name="s2ef-gemnet"
 
 conda activate ocp-models
 

@@ -60,7 +60,11 @@ class Profiler:
         return self
 
     def write_stats(self):
-        row = [distutils.get_rank(), self.epoch_timer.elapsed()]
+        row = [
+            distutils.get_rank(),
+            self.current_epoch,
+            self.epoch_timer.elapsed(),
+        ]
         row.extend([t.elapsed() for t in self.phase_timers.values()])
         self.runtime_writer.writerow(row)
         self.runtime_file.flush()

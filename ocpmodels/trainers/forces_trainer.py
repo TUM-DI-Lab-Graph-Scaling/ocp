@@ -21,7 +21,12 @@ from ocpmodels.common.relaxation.ml_relaxation import ml_relax
 from ocpmodels.common.utils import check_traj_files
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
-from ocpmodels.tracking.profiler import Phase, Profiler
+from ocpmodels.tracking.profiler import (
+    Phase,
+    Profiler,
+    profiler_phase,
+    set_profiler,
+)
 from ocpmodels.trainers.base_trainer import BaseTrainer
 
 
@@ -313,6 +318,7 @@ class ForcesTrainer(BaseTrainer):
                         self.config["model"],
                     )
                 )
+                set_profiler(profiler)
 
             # Calculate start_epoch from step instead of loading the epoch number
             # to prevent inconsistencies due to different batch size in checkpoint.
@@ -344,18 +350,10 @@ class ForcesTrainer(BaseTrainer):
                     with torch.cuda.amp.autocast(
                         enabled=self.scaler is not None
                     ):
-                        if profiler_enabled:
-                            profiler.start_phase(Phase.FORWARD)
                         out = self._forward(batch)
-                        if profiler_enabled:
-                            profiler.end_phase(Phase.FORWARD)
                         loss = self._compute_loss(out, batch)
                     loss = self.scaler.scale(loss) if self.scaler else loss
-                    if profiler_enabled:
-                        profiler.start_phase(Phase.BACKWARD)
                     self._backward(loss)
-                    if profiler_enabled:
-                        profiler.end_phase(Phase.BACKWARD)
                     scale = self.scaler.get_scale() if self.scaler else 1.0
 
                     # Compute metrics.
@@ -459,6 +457,7 @@ class ForcesTrainer(BaseTrainer):
         if self.config.get("test_dataset", False):
             self.test_dataset.close_db()
 
+    @profiler_phase(Phase.FORWARD)
     def _forward(self, batch_list):
         # forward pass.
         if self.config["model_attributes"].get("regress_forces", True):

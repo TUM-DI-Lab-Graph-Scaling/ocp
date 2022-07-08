@@ -2,7 +2,7 @@
 #SBATCH --mincpus=128
 #SBATCH --mem=500gb
 #SBATCH --gres=gpu:8
-#SBATCH --time=8:00:00
+#SBATCH --time=24:00:00
 #SBATCH --nodelist=lundquist
 #SBATCH --job-name="s2ef-gemnet"
 

@@ -15,4 +15,4 @@ export CUDA_HOME=/usr/local/cuda-11.1
 export NCCL_P2P_LEVEL=PIX
 
 srun python -u -m torch.distributed.launch --nproc_per_node=8 main.py \
-  --distributed --num-gpus 8 --mode train --config-yml configs/is2re/2M/dimenet_plus_plus/dpp.yml
+  --distributed --num-gpus 8 --mode train --config-yml configs/is2re/all/dimenet_plus_plus/dpp.yml

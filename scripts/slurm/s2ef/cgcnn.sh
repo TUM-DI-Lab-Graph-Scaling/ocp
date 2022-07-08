@@ -2,7 +2,7 @@
 #SBATCH --mincpus=128
 #SBATCH --mem=500gb
 #SBATCH --gres=gpu:8
-#SBATCH --time=2:00:00
+#SBATCH --time=7:00:00
 #SBATCH --nodelist=lundquist
 #SBATCH --job-name="s2ef-cgcnn"
 

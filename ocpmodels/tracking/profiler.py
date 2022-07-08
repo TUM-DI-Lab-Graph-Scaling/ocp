@@ -2,6 +2,7 @@ import csv
 import time
 from enum import Enum
 from pathlib import Path
+from typing import Optional
 
 from ocpmodels.common import distutils
 from ocpmodels.tracking.monitor import (
@@ -98,3 +99,27 @@ class Profiler:
         if distutils.is_master():
             self.resource_monitor_thread.stop = True
             self.resource_monitor_thread.join(20)
+
+
+def profiler_phase(phase: Phase):
+    def inner(func):
+        def phase_wrapper(*args, **kwargs):
+            global profiler
+            if profiler is not None:
+                profiler.start_phase(phase)
+            return_value = func(*args, **kwargs)
+            if profiler is not None:
+                profiler.end_phase(phase)
+            return return_value
+
+        return phase_wrapper
+
+    return inner
+
+
+profiler: Optional[Profiler] = None
+
+
+def set_profiler(p: Profiler):
+    global profiler
+    profiler = p

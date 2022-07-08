@@ -9,6 +9,7 @@ import torch
 from torch_geometric.nn import SchNet
 from torch_scatter import scatter
 
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed_data
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     conditional_grad,
@@ -67,12 +68,14 @@ class SchNetWrap(SchNet):
         num_gaussians=50,
         cutoff=10.0,
         readout="add",
+        deepspeed_config=None,
     ):
         self.num_targets = num_targets
         self.regress_forces = regress_forces
         self.use_pbc = use_pbc
         self.cutoff = cutoff
         self.otf_graph = otf_graph
+        self.deepspeed_config = deepspeed_config
 
         super(SchNetWrap, self).__init__(
             hidden_channels=hidden_channels,
@@ -113,6 +116,11 @@ class SchNetWrap(SchNet):
             edge_index = out["edge_index"]
             edge_weight = out["distances"]
             edge_attr = self.distance_expansion(edge_weight)
+
+            # Initialize data for DeepSpeed
+            edge_weight, edge_attr = initialize_deepspeed_data(
+                edge_weight, edge_attr, deepspeed_config=self.deepspeed_config
+            )
 
             h = self.embedding(z)
             for interaction in self.interactions:

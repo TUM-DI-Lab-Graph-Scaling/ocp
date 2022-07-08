@@ -13,11 +13,13 @@ import subprocess
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
+import deepspeed
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import yaml
+from sklearn.metrics import log_loss
 from torch.nn.parallel.distributed import DistributedDataParallel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -64,6 +66,7 @@ class BaseTrainer(ABC):
         name="base_trainer",
         slurm={},
         noddp=False,
+        deepspeed_config=None,
         profiler={"enabled": False},
     ):
         self.name = name
@@ -141,6 +144,7 @@ class BaseTrainer(ABC):
             },
             "slurm": slurm,
             "noddp": noddp,
+            "deepspeed_config": deepspeed_config,
             "profiler": profiler,
         }
         # AMP Scaler
@@ -202,6 +206,30 @@ class BaseTrainer(ABC):
         self.load_loss()
         self.load_optimizer()
         self.load_extras()
+        if self.config["deepspeed_config"]:
+            self.deepspeed_initialize()
+
+    def deepspeed_initialize(self):
+        """
+        Initialize the DeepSpeed wrappers for model and optimizer. Depending on the selected mode,
+        the optimizer is either just the default one from ocp or will be overwritten by DeepSpeed.
+        """
+        with open(self.config["deepspeed_config"], "r") as config_file:
+            config = json.load(config_file)
+            if "optimizer" in config:
+                self.model, self.optimizer, _, _ = deepspeed.initialize(
+                    config=self.config["deepspeed_config"],
+                    model=self.model,
+                    model_parameters=self.model.parameters(),
+                )
+            else:
+                self.model, self.optimizer, _, _ = deepspeed.initialize(
+                    config=self.config["deepspeed_config"],
+                    model=self.model,
+                    model_parameters=self.model.parameters(),
+                    optimizer=self.optimizer,
+                )
+        logging.info("Deepspeed model successfully initialized!")
 
     def load_seed_from_config(self):
         # https://pytorch.org/docs/stable/notes/randomness.html
@@ -356,6 +384,7 @@ class BaseTrainer(ABC):
             bond_feat_dim,
             self.num_targets,
             **self.config["model_attributes"],
+            deepspeed_config=self.config["deepspeed_config"],
         ).to(self.device)
 
         if distutils.is_master():
@@ -372,7 +401,11 @@ class BaseTrainer(ABC):
             output_device=self.device,
             num_gpus=1 if not self.cpu else 0,
         )
-        if distutils.initialized() and not self.config["noddp"]:
+        if (
+            distutils.initialized()
+            and not self.config["noddp"]
+            and not self.config["deepspeed_config"]
+        ):
             self.model = DistributedDataParallel(
                 self.model, device_ids=[self.device]
             )
@@ -674,7 +707,10 @@ class BaseTrainer(ABC):
     @profiler_phase(Phase.BACKWARD)
     def _backward(self, loss):
         self.optimizer.zero_grad()
-        loss.backward()
+        if self.config["deepspeed_config"]:
+            self.model.backward(loss)
+        else:
+            loss.backward()
         # Scale down the gradients of shared parameters
         if hasattr(self.model.module, "shared_parameters"):
             for p, factor in self.model.module.shared_parameters:

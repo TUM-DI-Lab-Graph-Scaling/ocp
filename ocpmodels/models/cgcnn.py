@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch_geometric.nn import MessagePassing, global_mean_pool, radius_graph
 from torch_geometric.nn.models.schnet import GaussianSmearing
 
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed_data
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     conditional_grad,
@@ -67,8 +68,12 @@ class CGCNN(BaseModel):
         cutoff=6.0,
         num_gaussians=50,
         embeddings="khot",
+        cc=None,
+        deepspeed_config=None,
     ):
-        super(CGCNN, self).__init__(num_atoms, bond_feat_dim, num_targets)
+        super(CGCNN, self).__init__(
+            num_atoms, bond_feat_dim, num_targets, deepspeed_config
+        )
         self.regress_forces = regress_forces
         self.use_pbc = use_pbc
         self.cutoff = cutoff
@@ -83,6 +88,7 @@ class CGCNN(BaseModel):
             raise ValueError(
                 'embedding mnust be either "khot" for original CGCNN K-hot elemental embeddings or "qmof" for QMOF K-hot elemental embeddings'
             )
+
         self.embedding = torch.zeros(100, len(embeddings[1]))
         for i in range(100):
             self.embedding[i] = torch.tensor(embeddings[i + 1])
@@ -150,6 +156,12 @@ class CGCNN(BaseModel):
             distances = (pos[row] - pos[col]).norm(dim=-1)
 
         data.edge_attr = self.distance_expansion(distances)
+
+        # Initialize data for DeepSpeed
+        data.x, data.edge_attr = initialize_deepspeed_data(
+            data.x, data.edge_attr, deepspeed_config=self.deepspeed_config
+        )
+
         # Forward pass through the network
         mol_feats = self._convolve(data)
         mol_feats = self.conv_to_fc(mol_feats)

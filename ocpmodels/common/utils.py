@@ -408,6 +408,8 @@ def build_config(args, args_override):
     config["world_size"] = args.num_nodes * args.num_gpus
     config["distributed_backend"] = args.distributed_backend
     config["noddp"] = args.no_ddp
+    # Deepspeed
+    config["deepspeed_config"] = args.deepspeed_config
 
     return config
 

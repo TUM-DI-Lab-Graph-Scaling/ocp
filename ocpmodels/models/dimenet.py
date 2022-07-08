@@ -11,6 +11,7 @@ from torch_geometric.nn import DimeNet, radius_graph
 from torch_scatter import scatter
 from torch_sparse import SparseTensor
 
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed_data
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     conditional_grad,
@@ -83,6 +84,7 @@ class DimeNetWrap(DimeNet):
         num_after_skip=2,
         num_output_layers=3,
         max_angles_per_image=int(1e6),
+        deepspeed_config=None,
     ):
         self.num_targets = num_targets
         self.regress_forces = regress_forces
@@ -90,6 +92,7 @@ class DimeNetWrap(DimeNet):
         self.cutoff = cutoff
         self.otf_graph = otf_graph
         self.max_angles_per_image = max_angles_per_image
+        self.deepspeed_config = deepspeed_config
 
         super(DimeNetWrap, self).__init__(
             hidden_channels=hidden_channels,
@@ -202,6 +205,11 @@ class DimeNetWrap(DimeNet):
         a = (pos_ji * pos_kj).sum(dim=-1)
         b = torch.cross(pos_ji, pos_kj).norm(dim=-1)
         angle = torch.atan2(b, a)
+
+        # Initialize data for DeepSpeed
+        dist, angle = initialize_deepspeed_data(
+            dist, angle, deepspeed_config=self.deepspeed_config
+        )
 
         rbf = self.rbf(dist)
         sbf = self.sbf(dist, angle, idx_kj)

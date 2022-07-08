@@ -14,6 +14,7 @@ import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter
 
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed_data
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import get_pbc_distances, radius_graph_pbc
 from ocpmodels.datasets.embeddings import ATOMIC_RADII, CONTINUOUS_EMBEDDINGS
@@ -251,9 +252,10 @@ class ForceNet(BaseModel):
         decoder_activation_str="swish",
         training=True,
         otf_graph=False,
+        deepspeed_config=None,
     ):
 
-        super(ForceNet, self).__init__()
+        super(ForceNet, self).__init__(deepspeed_config=deepspeed_config)
         self.training = training
         self.ablation = ablation
         if self.ablation not in [
@@ -499,9 +501,26 @@ class ForceNet(BaseModel):
                 [edge_vec_normalized, edge_dist_list], dim=1
             )
 
+        # Initialize data for DeepSpeed
+        h, edge_weight = initialize_deepspeed_data(
+            h, edge_weight, deepspeed_config=self.deepspeed_config
+        )
+
         if "sph" in self.basis_type:
+            # Initialize data for DeepSpeed
+            raw_edge_attr, edge_attr_sph = initialize_deepspeed_data(
+                raw_edge_attr,
+                edge_attr_sph,
+                deepspeed_config=self.deepspeed_config,
+            )
+            # forward edge_attr
             edge_attr = self.basis_fun(raw_edge_attr, edge_attr_sph)
         else:
+            # Initialize data for DeepSpeed
+            raw_edge_attr = initialize_deepspeed_data(
+                raw_edge_attr, deepspeed_config=self.deepspeed_config
+            )
+            # forward edge_attr
             edge_attr = self.basis_fun(raw_edge_attr)
 
         # pass edge_attributes through interaction blocks

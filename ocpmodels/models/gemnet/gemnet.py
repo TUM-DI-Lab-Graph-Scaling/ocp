@@ -13,6 +13,7 @@ from torch_geometric.nn import radius_graph
 from torch_scatter import scatter
 from torch_sparse import SparseTensor
 
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed_data
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     compute_neighbors,
@@ -133,6 +134,7 @@ class GemNetT(torch.nn.Module):
         output_init: str = "HeOrthogonal",
         activation: str = "swish",
         scale_file: Optional[str] = None,
+        deepspeed_config=None,
     ):
         super().__init__()
         self.num_targets = num_targets
@@ -149,6 +151,8 @@ class GemNetT(torch.nn.Module):
         self.regress_forces = regress_forces
         self.otf_graph = otf_graph
         self.use_pbc = use_pbc
+
+        self.deepspeed_config = deepspeed_config
 
         AutomaticFit.reset()  # make sure that queue is empty (avoid potential error)
 
@@ -546,6 +550,12 @@ class GemNetT(torch.nn.Module):
 
         # Calculate triplet angles
         cosφ_cab = inner_product_normalized(V_st[id3_ca], V_st[id3_ba])
+
+        # Initialize data for DeepSpeed
+        D_st, cosφ_cab = initialize_deepspeed_data(
+            D_st, cosφ_cab, deepspeed_config=self.deepspeed_config
+        )
+
         rad_cbf3, cbf3 = self.cbf_basis3(D_st, cosφ_cab, id3_ca)
 
         rbf = self.radial_basis(D_st)

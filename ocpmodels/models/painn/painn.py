@@ -77,6 +77,7 @@ class PaiNN(ScaledModule):
         direct_forces=True,
         use_pbc=True,
         otf_graph=True,
+        deepspeed_config=None,
     ):
         super(PaiNN, self).__init__()
 
@@ -90,6 +91,11 @@ class PaiNN(ScaledModule):
         self.direct_forces = direct_forces
         self.otf_graph = otf_graph
         self.use_pbc = use_pbc
+        self.deepspeed_config = deepspeed_config
+
+        # DeepSpeed is currently not supported
+        if self.deepspeed_config:
+            logging.warning("DeepSpeed is currently not supported for PaiNN!")
 
         # Borrowed from GemNet.
         self.symmetric_edge_symmetrization = False

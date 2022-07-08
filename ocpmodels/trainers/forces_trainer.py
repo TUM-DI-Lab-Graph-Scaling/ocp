@@ -7,9 +7,8 @@ LICENSE file in the root directory of this source tree.
 
 import logging
 import os
-import pathlib
 from collections import defaultdict
-from pathlib import Path
+from contextlib import ExitStack
 
 import numpy as np
 import torch
@@ -22,6 +21,12 @@ from ocpmodels.common.relaxation.ml_relaxation import ml_relax
 from ocpmodels.common.utils import check_traj_files
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.normalizer import Normalizer
+from ocpmodels.tracking.profiler import (
+    Phase,
+    Profiler,
+    profiler_phase,
+    set_profiler,
+)
 from ocpmodels.trainers.base_trainer import BaseTrainer
 
 
@@ -83,7 +88,8 @@ class ForcesTrainer(BaseTrainer):
         cpu=False,
         slurm={},
         noddp=False,
-        deepspeed_config=None
+        deepspeed_config=None,
+        profiler={"enabled": False},
     ):
         super().__init__(
             task=task,
@@ -105,7 +111,8 @@ class ForcesTrainer(BaseTrainer):
             name="s2ef",
             slurm=slurm,
             noddp=noddp,
-            deepspeed_config=deepspeed_config
+            deepspeed_config=deepspeed_config,
+            profiler=profiler,
         )
 
     def load_task(self):
@@ -283,6 +290,7 @@ class ForcesTrainer(BaseTrainer):
                     disable_tqdm=disable_eval_tqdm,
                 )
 
+    # flake8: noqa: 901
     def train(self, disable_eval_tqdm=False):
         eval_every = self.config["optim"].get(
             "eval_every", len(self.train_loader)
@@ -302,119 +310,148 @@ class ForcesTrainer(BaseTrainer):
             primary_metric = self.primary_metric
         self.metrics = {}
 
-        # Calculate start_epoch from step instead of loading the epoch number
-        # to prevent inconsistencies due to different batch size in checkpoint.
-        start_epoch = self.step // len(self.train_loader)
-
-        for epoch_int in range(
-            start_epoch, self.config["optim"]["max_epochs"]
-        ):
-            self.train_sampler.set_epoch(epoch_int)
-            skip_steps = self.step % len(self.train_loader)
-            train_loader_iter = iter(self.train_loader)
-
-            for i in range(skip_steps, len(self.train_loader)):
-                self.epoch = epoch_int + (i + 1) / len(self.train_loader)
-                self.step = epoch_int * len(self.train_loader) + i + 1
-                self.model.train()
-
-                # Get a batch.
-                batch = next(train_loader_iter)
-
-                # Forward, loss, backward.
-                with torch.cuda.amp.autocast(enabled=self.scaler is not None):
-                    out = self._forward(batch)
-                    loss = self._compute_loss(out, batch)
-                loss = self.scaler.scale(loss) if self.scaler else loss
-                self._backward(loss)
-                scale = self.scaler.get_scale() if self.scaler else 1.0
-
-                # Compute metrics.
-                self.metrics = self._compute_metrics(
-                    out,
-                    batch,
-                    self.evaluator,
-                    self.metrics,
+        with ExitStack() as stack:
+            profiler_enabled = self.config["profiler"]["enabled"]
+            if profiler_enabled:
+                profiler = stack.enter_context(
+                    Profiler(
+                        self.config["profiler"],
+                        type(self),
+                        self.config["model"],
+                    )
                 )
-                self.metrics = self.evaluator.update(
-                    "loss", loss.item() / scale, self.metrics
-                )
+                set_profiler(profiler)
 
-                # Log metrics.
-                log_dict = {k: self.metrics[k]["metric"] for k in self.metrics}
-                log_dict.update(
-                    {
-                        "lr": self.scheduler.get_lr(),
-                        "epoch": self.epoch,
-                        "step": self.step,
-                    }
-                )
-                if (
-                    self.step % self.config["cmd"]["print_every"] == 0
-                    and distutils.is_master()
-                    and not self.is_hpo
-                ):
-                    log_str = [
-                        "{}: {:.2e}".format(k, v) for k, v in log_dict.items()
-                    ]
-                    logging.info(", ".join(log_str))
-                    self.metrics = {}
+            # Calculate start_epoch from step instead of loading the epoch number
+            # to prevent inconsistencies due to different batch size in checkpoint.
+            start_epoch = self.step // len(self.train_loader)
 
-                if self.logger is not None:
-                    self.logger.log(
-                        log_dict,
-                        step=self.step,
-                        split="train",
+            for epoch_int in range(
+                start_epoch, self.config["optim"]["max_epochs"]
+            ):
+                if profiler_enabled:
+                    profiler.start_epoch()
+
+                self.train_sampler.set_epoch(epoch_int)
+                skip_steps = self.step % len(self.train_loader)
+                train_loader_iter = iter(self.train_loader)
+
+                for i in range(skip_steps, len(self.train_loader)):
+                    self.epoch = epoch_int + (i + 1) / len(self.train_loader)
+                    self.step = epoch_int * len(self.train_loader) + i + 1
+                    self.model.train()
+
+                    # Get a batch.
+                    if profiler_enabled:
+                        profiler.start_phase(Phase.DATALOADING)
+                    batch = next(train_loader_iter)
+                    if profiler_enabled:
+                        profiler.end_phase(Phase.DATALOADING)
+
+                    # Forward, loss, backward.
+                    with torch.cuda.amp.autocast(
+                        enabled=self.scaler is not None
+                    ):
+                        out = self._forward(batch)
+                        loss = self._compute_loss(out, batch)
+                    loss = self.scaler.scale(loss) if self.scaler else loss
+                    self._backward(loss)
+                    scale = self.scaler.get_scale() if self.scaler else 1.0
+
+                    # Compute metrics.
+                    self.metrics = self._compute_metrics(
+                        out,
+                        batch,
+                        self.evaluator,
+                        self.metrics,
+                    )
+                    self.metrics = self.evaluator.update(
+                        "loss", loss.item() / scale, self.metrics
                     )
 
-                if (
-                    checkpoint_every != -1
-                    and self.step % checkpoint_every == 0
-                ):
+                    # Log metrics.
+                    log_dict = {
+                        k: self.metrics[k]["metric"] for k in self.metrics
+                    }
+                    log_dict.update(
+                        {
+                            "lr": self.scheduler.get_lr(),
+                            "epoch": self.epoch,
+                            "step": self.step,
+                        }
+                    )
+                    if (
+                        self.step % self.config["cmd"]["print_every"] == 0
+                        and distutils.is_master()
+                        and not self.is_hpo
+                    ):
+                        log_str = [
+                            "{}: {:.2e}".format(k, v)
+                            for k, v in log_dict.items()
+                        ]
+                        logging.info(", ".join(log_str))
+                        self.metrics = {}
+
+                    if self.logger is not None:
+                        self.logger.log(
+                            log_dict,
+                            step=self.step,
+                            split="train",
+                        )
+
+                    if (
+                        checkpoint_every != -1
+                        and self.step % checkpoint_every == 0
+                    ):
+                        self.save(
+                            checkpoint_file="checkpoint.pt",
+                            training_state=True,
+                        )
+
+                    # Evaluate on val set every `eval_every` iterations.
+                    if self.step % eval_every == 0:
+                        if self.val_loader is not None:
+                            val_metrics = self.validate(
+                                split="val",
+                                disable_tqdm=disable_eval_tqdm,
+                            )
+                            self.update_best(
+                                primary_metric,
+                                val_metrics,
+                                disable_eval_tqdm=disable_eval_tqdm,
+                            )
+                            if self.is_hpo:
+                                self.hpo_update(
+                                    self.epoch,
+                                    self.step,
+                                    self.metrics,
+                                    val_metrics,
+                                )
+
+                        if self.config["task"].get("eval_relaxations", False):
+                            if "relax_dataset" not in self.config["task"]:
+                                logging.warning(
+                                    "Cannot evaluate relaxations, relax_dataset not specified"
+                                )
+                            else:
+                                self.run_relaxations()
+
+                    if self.scheduler.scheduler_type == "ReduceLROnPlateau":
+                        if self.step % eval_every == 0:
+                            self.scheduler.step(
+                                metrics=val_metrics[primary_metric]["metric"],
+                            )
+                    else:
+                        self.scheduler.step()
+
+                torch.cuda.empty_cache()
+                if profiler_enabled:
+                    profiler.end_epoch()
+
+                if checkpoint_every == -1:
                     self.save(
                         checkpoint_file="checkpoint.pt", training_state=True
                     )
-
-                # Evaluate on val set every `eval_every` iterations.
-                if self.step % eval_every == 0:
-                    if self.val_loader is not None:
-                        val_metrics = self.validate(
-                            split="val",
-                            disable_tqdm=disable_eval_tqdm,
-                        )
-                        self.update_best(
-                            primary_metric,
-                            val_metrics,
-                            disable_eval_tqdm=disable_eval_tqdm,
-                        )
-                        if self.is_hpo:
-                            self.hpo_update(
-                                self.epoch,
-                                self.step,
-                                self.metrics,
-                                val_metrics,
-                            )
-
-                    if self.config["task"].get("eval_relaxations", False):
-                        if "relax_dataset" not in self.config["task"]:
-                            logging.warning(
-                                "Cannot evaluate relaxations, relax_dataset not specified"
-                            )
-                        else:
-                            self.run_relaxations()
-
-                if self.scheduler.scheduler_type == "ReduceLROnPlateau":
-                    if self.step % eval_every == 0:
-                        self.scheduler.step(
-                            metrics=val_metrics[primary_metric]["metric"],
-                        )
-                else:
-                    self.scheduler.step()
-
-            torch.cuda.empty_cache()
-
-            if checkpoint_every == -1:
-                self.save(checkpoint_file="checkpoint.pt", training_state=True)
 
         self.train_dataset.close_db()
         if self.config.get("val_dataset", False):
@@ -422,6 +459,7 @@ class ForcesTrainer(BaseTrainer):
         if self.config.get("test_dataset", False):
             self.test_dataset.close_db()
 
+    @profiler_phase(Phase.FORWARD)
     def _forward(self, batch_list):
         # forward pass.
         if self.config["model_attributes"].get("regress_forces", True):

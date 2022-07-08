@@ -27,5 +27,10 @@ optim:
     - 31250
   warmup_steps: 3125
   warmup_factor: 0.2
-  max_epochs: 50
+  max_epochs: 7
   force_coefficient: 10
+
+profiler:
+  enabled: True
+  metrics_path: metrics
+  resource_poll_interval: 20

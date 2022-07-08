@@ -35,3 +35,7 @@ optim:
   warmup_factor: 0.2
   max_epochs: 7
   force_coefficient: 50
+
+profiler:
+  metrics_path: metrics
+  resource_poll_interval: 60

@@ -1,0 +1,52 @@
+includes:
+- configs/is2re/all/base.yml
+
+model:
+  name: gemnet_t
+  num_spherical: 7
+  num_radial: 64
+  num_blocks: 5
+  emb_size_atom: 256
+  emb_size_edge: 512
+  emb_size_trip: 64
+  emb_size_rbf: 64
+  emb_size_cbf: 16
+  emb_size_bil_trip: 64
+  num_before_skip: 1
+  num_after_skip: 2
+  num_concat: 1
+  num_atom: 3
+  cutoff: 12.0
+  max_neighbors: 50
+  rbf:
+    name: gaussian
+  envelope:
+    name: polynomial
+    exponent: 5
+  cbf:
+    name: spherical_harmonics
+  extensive: True
+  otf_graph: True
+  output_init: HeOrthogonal
+  activation: silu
+  scale_file: configs/is2re/all/gemnet/gemnet-dT_c12.json
+  regress_forces: False
+
+optim:
+  batch_size: 4
+  eval_batch_size: 4
+  num_workers: 4
+  lr_initial: 0.0001
+  lr_gamma: 0.1
+  lr_milestones: # steps at which lr_initial <- lr_initial * lr_gamma
+    - 115082
+    - 230164
+    - 345246
+  warmup_steps: 57541
+  warmup_factor: 0.2
+  max_epochs: 7
+
+profiler:
+  enabled: True
+  metrics_path: metrics
+  resource_poll_interval: 180

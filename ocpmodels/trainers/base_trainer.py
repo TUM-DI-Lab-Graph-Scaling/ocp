@@ -6,7 +6,6 @@ LICENSE file in the root directory of this source tree.
 """
 import datetime
 import errno
-import json
 import logging
 import os
 import random
@@ -31,12 +30,7 @@ from ocpmodels.common.data_parallel import (
     ParallelCollater,
 )
 from ocpmodels.common.registry import registry
-from ocpmodels.common.utils import (
-    build_config,
-    plot_histogram,
-    save_checkpoint,
-    warmup_lr_lambda,
-)
+from ocpmodels.common.utils import save_checkpoint
 from ocpmodels.modules.evaluator import Evaluator
 from ocpmodels.modules.exponential_moving_average import (
     ExponentialMovingAverage,
@@ -44,6 +38,7 @@ from ocpmodels.modules.exponential_moving_average import (
 from ocpmodels.modules.loss import AtomwiseL2Loss, DDPLoss, L2MAELoss
 from ocpmodels.modules.normalizer import Normalizer
 from ocpmodels.modules.scheduler import LRScheduler
+from ocpmodels.tracking.profiler import Phase, profiler_phase
 
 
 @registry.register_trainer("base")
@@ -69,6 +64,7 @@ class BaseTrainer(ABC):
         name="base_trainer",
         slurm={},
         noddp=False,
+        profiler={"enabled": False},
     ):
         self.name = name
         self.cpu = cpu
@@ -145,6 +141,7 @@ class BaseTrainer(ABC):
             },
             "slurm": slurm,
             "noddp": noddp,
+            "profiler": profiler,
         }
         # AMP Scaler
         self.scaler = torch.cuda.amp.GradScaler() if amp else None
@@ -183,9 +180,6 @@ class BaseTrainer(ABC):
 
         if self.is_hpo:
             # conditional import is necessary for checkpointing
-            from ray import tune
-
-            from ocpmodels.common.hpo_utils import tune_reporter
 
             # sets the hpo checkpoint frequency
             # default is no checkpointing
@@ -677,6 +671,7 @@ class BaseTrainer(ABC):
     def _compute_loss(self, out, batch_list):
         """Derived classes should implement this function."""
 
+    @profiler_phase(Phase.BACKWARD)
     def _backward(self, loss):
         self.optimizer.zero_grad()
         loss.backward()

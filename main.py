@@ -58,10 +58,7 @@ class Runner(submitit.helpers.Checkpointable):
                 cpu=config.get("cpu", False),
                 slurm=config.get("slurm", {}),
                 noddp=config.get("noddp", False),
-                profiler=config.get(
-                    "profiler",
-                    {"metrics_path": "metrics", "resource_poll_interval": 20},
-                ),
+                profiler=config.get("profiler", {"enabled": False}),
             )
             self.task = registry.get_task_class(config["mode"])(self.config)
             self.task.setup(self.trainer)

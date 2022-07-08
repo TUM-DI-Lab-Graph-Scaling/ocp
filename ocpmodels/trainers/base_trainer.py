@@ -69,7 +69,7 @@ class BaseTrainer(ABC):
         name="base_trainer",
         slurm={},
         noddp=False,
-        profiler={"metrics_path": "metrics", "resource_poll_time": 20},
+        profiler={"enabled": False},
     ):
         self.name = name
         self.cpu = cpu

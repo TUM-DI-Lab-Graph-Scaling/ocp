@@ -32,5 +32,6 @@ optim:
   max_epochs: 7
 
 profiler:
+  enabled: True
   metrics_path: metrics
   resource_poll_interval: 20

@@ -6,22 +6,14 @@ LICENSE file in the root directory of this source tree.
 """
 
 import logging
-import os
-from collections import defaultdict
+from contextlib import ExitStack
 
-import numpy as np
 import torch
 import torch_geometric
 from tqdm import tqdm
 
 from ocpmodels.common import distutils
 from ocpmodels.common.registry import registry
-from ocpmodels.modules.normalizer import Normalizer
-from ocpmodels.tracking.monitor import (
-    CPUMemoryMonitor,
-    GPUMemoryMonitor,
-    ResourceMonitorThread,
-)
 from ocpmodels.tracking.profiler import Phase, Profiler
 from ocpmodels.trainers.base_trainer import BaseTrainer
 
@@ -83,7 +75,7 @@ class EnergyTrainer(BaseTrainer):
         cpu=False,
         slurm={},
         noddp=False,
-        profiler={"metrics_path": "metrics", "resource_poll_time": 20},
+        profiler={"enabled": False},
     ):
         super().__init__(
             task=task,
@@ -170,6 +162,7 @@ class EnergyTrainer(BaseTrainer):
 
         return predictions
 
+    # flake8: noqa: 901
     def train(self, disable_eval_tqdm=False):
         eval_every = self.config["optim"].get(
             "eval_every", len(self.train_loader)
@@ -179,9 +172,16 @@ class EnergyTrainer(BaseTrainer):
         )
         self.best_val_metric = 1e9
 
-        with Profiler(
-            self.config["profiler"], type(self), self.config["model"]
-        ) as profiler:
+        with ExitStack() as stack:
+            profiler_enabled = self.config["profiler"]["enabled"]
+            if profiler_enabled:
+                profiler = stack.enter_context(
+                    Profiler(
+                        self.config["profiler"],
+                        type(self),
+                        self.config["model"],
+                    )
+                )
 
             # Calculate start_epoch from step instead of loading the epoch number
             # to prevent inconsistencies due to different batch size in checkpoint.
@@ -190,7 +190,8 @@ class EnergyTrainer(BaseTrainer):
             for epoch_int in range(
                 start_epoch, self.config["optim"]["max_epochs"]
             ):
-                profiler.start_epoch()
+                if profiler_enabled:
+                    profiler.start_epoch()
 
                 self.train_sampler.set_epoch(epoch_int)
                 skip_steps = self.step % len(self.train_loader)
@@ -202,22 +203,28 @@ class EnergyTrainer(BaseTrainer):
                     self.model.train()
 
                     # Get a batch.
-                    profiler.start_phase(Phase.DATALOADING)
+                    if profiler_enabled:
+                        profiler.start_phase(Phase.DATALOADING)
                     batch = next(train_loader_iter)
-                    profiler.end_phase(Phase.DATALOADING)
+                    if profiler_enabled:
+                        profiler.end_phase(Phase.DATALOADING)
 
                     # Forward, loss, backward.
                     with torch.cuda.amp.autocast(
                         enabled=self.scaler is not None
                     ):
-                        profiler.start_phase(Phase.FORWARD)
+                        if profiler_enabled:
+                            profiler.start_phase(Phase.FORWARD)
                         out = self._forward(batch)
-                        profiler.end_phase(Phase.FORWARD)
+                        if profiler_enabled:
+                            profiler.end_phase(Phase.FORWARD)
                         loss = self._compute_loss(out, batch)
                     loss = self.scaler.scale(loss) if self.scaler else loss
-                    profiler.start_phase(Phase.BACKWARD)
+                    if profiler_enabled:
+                        profiler.start_phase(Phase.BACKWARD)
                     self._backward(loss)
-                    profiler.end_phase(Phase.BACKWARD)
+                    if profiler_enabled:
+                        profiler.end_phase(Phase.BACKWARD)
                     scale = self.scaler.get_scale() if self.scaler else 1.0
 
                     # Compute metrics.
@@ -315,7 +322,8 @@ class EnergyTrainer(BaseTrainer):
                         self.scheduler.step()
 
                 torch.cuda.empty_cache()
-                profiler.end_epoch()
+                if profiler_enabled:
+                    profiler.end_epoch()
 
         self.train_dataset.close_db()
         if self.config.get("val_dataset", False):

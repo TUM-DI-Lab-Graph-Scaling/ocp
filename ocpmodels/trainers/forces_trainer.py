@@ -318,6 +318,7 @@ class ForcesTrainer(BaseTrainer):
                         self.config["profiler"],
                         type(self),
                         self.config["model"],
+                        self.config["deepspeed_config"],
                     )
                 )
                 set_profiler(profiler)

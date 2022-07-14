@@ -1,5 +1,7 @@
 import json
 
+from torch_geometric.data.batch import Batch
+
 
 def initialize_deepspeed_data(*args, deepspeed_config=None):
     """

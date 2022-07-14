@@ -41,7 +41,7 @@ class ResourceMonitorThread(Thread):
         self.resource_writer = csv.writer(self.resource_file, delimiter=",")
         self.stop = False
         self.delay = delay
-        self.current_epoch = 0
+        self.epoch = 0
         self.log_results = False
         self.monitors: List[ResourceMonitor] = []
 
@@ -55,7 +55,7 @@ class ResourceMonitorThread(Thread):
         self.monitors.append(monitor)
 
     def eval_monitors(self):
-        row = [datetime.datetime.now(), self.current_epoch]
+        row = [datetime.datetime.now(), self.epoch]
         row.extend(reduce(list.__add__, [m.measure() for m in self.monitors]))
         self.resource_writer.writerow(row)
         self.resource_file.flush()

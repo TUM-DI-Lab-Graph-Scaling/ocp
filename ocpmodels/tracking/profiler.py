@@ -1,8 +1,11 @@
 import csv
+import shutil
 import time
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+
+import torch.distributed
 
 from ocpmodels.common import distutils
 from ocpmodels.tracking.monitor import (
@@ -20,7 +23,7 @@ class Phase(Enum):
 
 
 class Profiler:
-    def __init__(self, config, trainer, model_name):
+    def __init__(self, config, trainer, model_name, deepspeed_config):
         assert (
             "metrics_path" in config
         ), "Profiler config contains no metrics path."
@@ -33,11 +36,8 @@ class Profiler:
         self.dir_path = (
             Path(self.config["metrics_path"]) / task_name / model_name
         )
-        self.dir_path.mkdir(parents=True, exist_ok=True)
-        self.id = int(time.time())
-        self.runtime_path = self.dir_path / (str(self.id) + "_runtimes.csv")
-        self.resource_path = self.dir_path / (str(self.id) + "_resources.csv")
-        self.current_epoch = 0
+        self.deepspeed_config = deepspeed_config
+        self.epoch = 0
         self.epoch_timer = Timer()
         self.phase_timers = {
             Phase.DATALOADING: Timer(),
@@ -46,6 +46,22 @@ class Profiler:
         }
 
     def __enter__(self):
+        self.dir_path.mkdir(parents=True, exist_ok=True)
+        if distutils.is_master():
+            ids = [int(time.time())]
+        else:
+            ids = [None]
+        torch.distributed.broadcast_object_list(ids)
+
+        self.id = ids[0]
+        self.runtime_path = self.dir_path / (str(self.id) + "_runtimes.csv")
+        self.resource_path = self.dir_path / (str(self.id) + "_resources.csv")
+        if self.deepspeed_config is not None and distutils.is_master():
+            self.deepspeed_config_path = self.dir_path / (
+                str(self.id) + "_ds_config.json"
+            )
+            shutil.copyfile(self.deepspeed_config, self.deepspeed_config_path)
+
         self.runtime_file = open(self.runtime_path, "a")
         self.resource_file = open(self.resource_path, "a")
 
@@ -63,7 +79,7 @@ class Profiler:
     def write_stats(self):
         row = [
             distutils.get_rank(),
-            self.current_epoch,
+            self.epoch,
             self.epoch_timer.elapsed(),
         ]
         row.extend([t.elapsed() for t in self.phase_timers.values()])
@@ -76,7 +92,7 @@ class Profiler:
 
     def start_epoch(self):
         if distutils.is_master():
-            self.resource_monitor_thread.epoch = self.current_epoch
+            self.resource_monitor_thread.epoch = self.epoch
             self.resource_monitor_thread.log_results = True
         self.epoch_timer.start()
 
@@ -85,7 +101,7 @@ class Profiler:
         if distutils.is_master():
             self.resource_monitor_thread.log_results = False
         self.write_stats()
-        self.current_epoch += 1
+        self.epoch += 1
 
     def start_phase(self, phase):
         self.phase_timers[phase].start()

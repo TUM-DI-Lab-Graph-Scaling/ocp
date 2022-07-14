@@ -260,7 +260,16 @@ def get_angle(R_ac, R_ab):
     # cos(alpha) = (u * v) / (|u|*|v|)
     x = torch.sum(R_ac * R_ab, dim=-1)  # shape = (N,)
     # sin(alpha) = |u x v| / (|u|*|v|)
-    y = torch.cross(R_ac, R_ab, dim=-1).norm(dim=-1)  # shape = (N,)
+    #
+    # When DeepSpeed optimizations are activated, R_ac and R_ab are not necessarily of type
+    # float32 anymore. Since torch.cross does only support float and not bloat16 as tensor
+    # data types, we cast the input to float and convert the result back to its original
+    # data type after the operation.
+    y = (
+        torch.cross(R_ac.float(), R_ab.float(), dim=-1)
+        .norm(dim=-1)
+        .to(R_ac.dtype)
+    )  # shape = (N,)
     y = y.clamp(min=1e-9)  # Avoid NaN gradient for y = (0,0,0)
 
     angle = torch.atan2(y, x)

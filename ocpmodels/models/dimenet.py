@@ -63,6 +63,10 @@ class DimeNetWrap(DimeNet):
         max_angles_per_image (int, optional): The maximum number of angles used
             per image. This can be used to reduce memory usage at the cost of
             model performance. (default: :obj:`1e6`)
+        deepspeed_config: (Path): Path to the DeepSpeed config json file that is used
+            to train the model. Needed for conversion of data types of data that
+            is used in the model (float32 to float16 or bfloat16).
+            (default: :obj:None)
     """
 
     def __init__(

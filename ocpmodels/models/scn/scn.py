@@ -97,6 +97,7 @@ class SphericalChannelNetwork(BaseModel):
         distance_resolution=0.02,
         show_timing_info=True,
         direct_forces=True,
+        deepspeed_config=None,
     ):
         super().__init__()
 
@@ -130,6 +131,14 @@ class SphericalChannelNetwork(BaseModel):
         self.sphere_basis = (self.lmax + 1) ** 2
         self.use_grid = use_grid
         self.distance_function = distance_function
+
+        self.deepspeed_config = deepspeed_config
+
+        # DeepSpeed is currently not supported
+        if self.deepspeed_config:
+            logging.warning(
+                "DeepSpeed is currently not supported for SpinConv!"
+            )
 
         # variables used for display purposes
         self.counter = 0

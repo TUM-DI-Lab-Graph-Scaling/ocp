@@ -225,6 +225,10 @@ class DimeNetPlusPlus(torch.nn.Module):
             output blocks. (default: :obj:`3`)
         act: (function, optional): The activation funtion.
             (default: :obj:`swish`)
+        deepspeed_config: (Path): Path to the DeepSpeed config json file that is used
+            to train the model. Needed for conversion of data types of data that
+            is used in the model (float32 to float16 or bfloat16).
+            (default: :obj:None)
     """
 
     url = "https://github.com/klicperajo/dimenet/raw/master/pretrained"

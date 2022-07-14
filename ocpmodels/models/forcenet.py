@@ -229,6 +229,10 @@ class ForceNet(BaseModel):
             (default: :obj:`True`)
         otf_graph (bool, optional): If set to :obj:`True`, compute graph edges on the fly.
             (default: :obj:`False`)
+        deepspeed_config: (Path): Path to the DeepSpeed config json file that is used
+            to train the model. Needed for conversion of data types of data that
+            is used in the model (float32 to float16 or bfloat16).
+            (default: :obj:None)
     """
 
     def __init__(

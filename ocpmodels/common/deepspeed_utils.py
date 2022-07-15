@@ -1,5 +1,7 @@
 import json
 
+from torch_geometric.data.batch import Batch
+
 
 def initialize_deepspeed_data(*args, deepspeed_config=None):
     """
@@ -10,8 +12,8 @@ def initialize_deepspeed_data(*args, deepspeed_config=None):
     """
     if len(args) > 1:
         return (deepspeed_convert_type(x, deepspeed_config) for x in args)
-    else:
-        return deepspeed_convert_type(args, deepspeed_config)
+    elif len(args) == 1:
+        return deepspeed_convert_type(args[0], deepspeed_config)
 
 
 def deepspeed_convert_type(x, deepspeed_config=None):

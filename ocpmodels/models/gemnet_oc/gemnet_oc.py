@@ -13,6 +13,7 @@ import torch
 from torch_geometric.nn import radius_graph
 from torch_scatter import scatter, segment_coo
 
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed_data
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import (
     compute_neighbors,
@@ -179,6 +180,10 @@ class GemNetOC(ScaledModule):
     qint_tags: list
         Which atom tags to use quadruplet interactions for.
         0=sub-surface bulk, 1=surface, 2=adsorbate atoms.
+    deepspeed_config: (Path): Path to the DeepSpeed config json file that is used
+            to train the model. Needed for conversion of data types of data that
+            is used in the model (float32 to float16 or bfloat16).
+            (default: :obj:None)
     """
 
     def __init__(
@@ -235,6 +240,7 @@ class GemNetOC(ScaledModule):
         atom_interaction: bool = False,
         scale_basis: bool = False,
         qint_tags: list = [0, 1, 2],
+        deepspeed_config=None,
         **kwargs,  # backwards compatibility with deprecated arguments
     ):
         super().__init__()
@@ -266,6 +272,8 @@ class GemNetOC(ScaledModule):
         self.forces_coupled = forces_coupled
         self.regress_forces = regress_forces
         self.force_scaler = ForceScaler(enabled=scale_backprop_forces)
+
+        self.deepspeed_config = deepspeed_config
 
         self.init_basis_functions(
             num_radial,
@@ -679,7 +687,14 @@ class GemNetOC(ScaledModule):
 
         # Project for calculating dihedral angle
         # Cross product is the same as projection, just 90° rotated
-        V_db_cross = torch.cross(V_db, V_ba, dim=-1)  # a - b -| d
+        #
+        # When DeepSpeed optimizations are activated, V_db and V_ba are not necessarily of type
+        # float32 anymore. Since torch.cross does only support float and not bloat16 as tensor
+        # data types, we cast the input to float and convert the result back to its original
+        # data type after the operation.
+        V_db_cross = torch.cross(V_db.float(), V_ba.float(), dim=-1).to(
+            V_db.dtype
+        )  # a - b -| d
         V_db_cross = V_db_cross[quad_idx["trip_in_to_quad"]]
         # (num_quadruplets,)
 
@@ -690,7 +705,14 @@ class GemNetOC(ScaledModule):
 
         # Project for calculating dihedral angle
         # Cross product is the same as projection, just 90° rotated
-        V_ca_cross = torch.cross(V_ca, V_ba, dim=-1)  # c |- a - b
+        #
+        # When DeepSpeed optimizations are activated, V_ca and V_ba are not necessarily of type
+        # float32 anymore. Since torch.cross does only support float and not bloat16 as tensor
+        # data types, we cast the input to float and convert the result back to its original
+        # data type after the operation.
+        V_ca_cross = torch.cross(V_ca.float(), V_ba.float(), dim=-1).to(
+            V_ca.dtype
+        )  # c |- a - b
         V_ca_cross = V_ca_cross[quad_idx["trip_out_to_quad"]]
         # (num_quadruplets,)
 
@@ -797,7 +819,7 @@ class GemNetOC(ScaledModule):
 
         # Create indexing array
         edge_reorder_idx = repeat_blocks(
-            new_graph["num_neighbors"] // 2,
+            torch.div(new_graph["num_neighbors"], 2, rounding_mode="floor"),
             repeats=2,
             continuous_indexing=True,
             repeat_inc=edge_index_directed.size(1),
@@ -1271,6 +1293,19 @@ class GemNetOC(ScaledModule):
         ) = self.get_graphs_and_indices(data)
         _, idx_t = main_graph["edge_index"]
 
+        # Initialize data for DeepSpeed
+        for graph in [main_graph, a2a_graph, a2ee2a_graph, qint_graph]:
+            (
+                graph["distance"],
+                graph["vector"],
+                graph["cell_offset"],
+            ) = initialize_deepspeed_data(
+                graph["distance"],
+                graph["vector"],
+                graph["cell_offset"],
+                deepspeed_config=self.deepspeed_config,
+            )
+
         (
             basis_rad_raw,
             basis_atom_update,
@@ -1333,9 +1368,9 @@ class GemNetOC(ScaledModule):
         if self.direct_forces:
             x_F = self.out_mlp_F(torch.cat(xs_F, dim=-1))
         with torch.cuda.amp.autocast(False):
-            E_t = self.out_energy(x_E.float())
+            E_t = self.out_energy(x_E)
             if self.direct_forces:
-                F_st = self.out_forces(x_F.float())
+                F_st = self.out_forces(x_F)
 
         nMolecules = torch.max(batch) + 1
         if self.extensive:

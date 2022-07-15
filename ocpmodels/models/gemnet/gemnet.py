@@ -101,6 +101,10 @@ class GemNetT(torch.nn.Module):
             Name of the activation function.
         scale_file: str
             Path to the json file containing the scaling factors.
+        deepspeed_config: (Path): Path to the DeepSpeed config json file that is used
+            to train the model. Needed for conversion of data types of data that
+            is used in the model (float32 to float16 or bfloat16).
+            (default: :obj:None)
     """
 
     def __init__(

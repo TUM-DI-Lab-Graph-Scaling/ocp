@@ -1,4 +1,5 @@
 import csv
+import json
 import shutil
 import time
 from enum import Enum
@@ -54,8 +55,17 @@ class Profiler:
         torch.distributed.broadcast_object_list(ids)
 
         self.id = ids[0]
-        self.runtime_path = self.dir_path / (str(self.id) + "_runtimes.csv")
-        self.resource_path = self.dir_path / (str(self.id) + "_resources.csv")
+        self.ds_stage = 0
+        if self.deepspeed_config:
+            with open(self.deepspeed_config) as ds_f:
+                ds_config = json.load(ds_f)
+                self.ds_stage = ds_config["zero_optimization"]["stage"]
+        self.base_path = (
+            self.dir_path
+            / f"{str(self.id)}_stage-{self.ds_stage}_{distutils.get_world_size()}-gpus"
+        )
+        self.runtime_path = self.base_path + "_runtimes.csv"
+        self.resource_path = self.base_path + "_resources.csv"
         if self.deepspeed_config is not None and distutils.is_master():
             self.deepspeed_config_path = self.dir_path / (
                 str(self.id) + "_ds_config.json"

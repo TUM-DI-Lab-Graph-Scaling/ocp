@@ -217,6 +217,14 @@ class BaseTrainer(ABC):
         """
         with open(self.config["deepspeed_config"], "r") as config_file:
             config = json.load(config_file)
+            if (
+                "zero_optimization" in config
+                and config["zero_optimization"]["stage"] == 3
+            ):
+                for param in self.model.parameters():
+                    deepspeed.zero.register_external_parameter(
+                        self.model, param
+                    )
             if "optimizer" in config:
                 self.model, self.optimizer, _, _ = deepspeed.initialize(
                     config=self.config["deepspeed_config"],
@@ -523,9 +531,18 @@ class BaseTrainer(ABC):
         self.clip_grad_norm = self.config["optim"].get("clip_grad_norm")
         self.ema_decay = self.config["optim"].get("ema_decay")
         if self.ema_decay:
+            # Check if parameter gathering is needed (if stage 3 activated)
+            if self.config["deepspeed_config"]:
+                with open(self.config["deepspeed_config"], "r") as config_file:
+                    config = json.load(config_file)
+                    deepspeed_stage_3 = (
+                        "zero_optimization" in config
+                        and config["zero_optimization"]["stage"] == 3
+                    )
             self.ema = ExponentialMovingAverage(
                 self.model.parameters(),
                 self.ema_decay,
+                deepspeed_stage_3=deepspeed_stage_3,
             )
         else:
             self.ema = None

@@ -376,18 +376,17 @@ class BaseTrainer(ABC):
         )
 
         loader = self.train_loader or self.val_loader or self.test_loader
-        with deepspeed.zero.Init():
-            self.model = registry.get_model_class(self.config["model"])(
-                loader.dataset[0].x.shape[-1]
-                if loader
-                and hasattr(loader.dataset[0], "x")
-                and loader.dataset[0].x is not None
-                else None,
-                bond_feat_dim,
-                self.num_targets,
-                **self.config["model_attributes"],
-                deepspeed_config=self.config["deepspeed_config"],
-            ).to(self.device)
+        self.model = registry.get_model_class(self.config["model"])(
+            loader.dataset[0].x.shape[-1]
+            if loader
+            and hasattr(loader.dataset[0], "x")
+            and loader.dataset[0].x is not None
+            else None,
+            bond_feat_dim,
+            self.num_targets,
+            **self.config["model_attributes"],
+            deepspeed_config=self.config["deepspeed_config"],
+        ).to(self.device)
 
         if distutils.is_master():
             logging.info(

@@ -5,6 +5,7 @@ This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
 
+import deepspeed
 import torch
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing, global_mean_pool, radius_graph
@@ -224,12 +225,18 @@ class CGCNNConv(MessagePassing):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.lin1.weight)
+        with deepspeed.zero.GatheredParameters(
+            [self.lin1.weight, self.lin1.bias], modifier_rank=0
+        ):
+            torch.nn.init.xavier_uniform_(self.lin1.weight)
+            self.lin1.bias.data.fill_(0)
 
-        self.lin1.bias.data.fill_(0)
-
-        self.bn1.reset_parameters()
-        self.ln1.reset_parameters()
+        with deepspeed.zero.GatheredParameters(
+            [self.bn1.weight, self.bn1.bias, self.ln1.weight, self.ln1.bias],
+            modifier_rank=0,
+        ):
+            self.bn1.reset_parameters()
+            self.ln1.reset_parameters()
 
     def forward(self, x, edge_index, edge_attr):
         """

@@ -60,12 +60,14 @@ class Profiler:
             with open(self.deepspeed_config) as ds_f:
                 ds_config = json.load(ds_f)
                 self.ds_stage = ds_config["zero_optimization"]["stage"]
-        self.base_path = (
+        self.runtime_path = (
             self.dir_path
-            / f"{str(self.id)}_stage-{self.ds_stage}_{distutils.get_world_size()}-gpus"
+            / f"{str(self.id)}_stage{self.ds_stage}_{distutils.get_world_size()}gpus_runtimes.csv"
         )
-        self.runtime_path = self.base_path + "_runtimes.csv"
-        self.resource_path = self.base_path + "_resources.csv"
+        self.resource_path = (
+            self.dir_path
+            / f"{str(self.id)}_stage{self.ds_stage}_{distutils.get_world_size()}gpus_resources.csv"
+        )
         if self.deepspeed_config is not None and distutils.is_master():
             self.deepspeed_config_path = self.dir_path / (
                 str(self.id) + "_ds_config.json"

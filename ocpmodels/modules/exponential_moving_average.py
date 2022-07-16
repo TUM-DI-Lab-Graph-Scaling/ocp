@@ -6,9 +6,11 @@ https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py (MIT license)
 from __future__ import division, unicode_literals
 
 import copy
+import json
 import weakref
 from typing import Iterable, Optional
 
+import deepspeed
 import torch
 
 
@@ -31,6 +33,7 @@ class ExponentialMovingAverage:
         parameters: Iterable[torch.nn.Parameter],
         decay: float,
         use_num_updates: bool = False,
+        deepspeed_stage_3=False,
     ):
         if decay < 0.0 or decay > 1.0:
             raise ValueError("Decay must be between 0 and 1")
@@ -49,6 +52,7 @@ class ExponentialMovingAverage:
         self._params_refs = [
             weakref.ref(p) for p in parameters if p.requires_grad
         ]
+        self.deepspeed_stage_3 = deepspeed_stage_3
 
     def _get_parameters(
         self, parameters: Optional[Iterable[torch.nn.Parameter]]
@@ -93,8 +97,14 @@ class ExponentialMovingAverage:
         one_minus_decay = 1.0 - decay
         with torch.no_grad():
             for s_param, param in zip(self.shadow_params, parameters):
-                tmp = param - s_param
-                s_param.add_(tmp, alpha=one_minus_decay)
+                if self.deepspeed_stage_3:
+                    # Gather parameters if ZeRO stage 3 activated
+                    with deepspeed.zero.GatheredParameters([s_param, param]):
+                        tmp = param - s_param
+                        s_param.add_(tmp, alpha=one_minus_decay)
+                else:
+                    tmp = param - s_param
+                    s_param.add_(tmp, alpha=one_minus_decay)
 
     def copy_to(
         self, parameters: Optional[Iterable[torch.nn.Parameter]] = None

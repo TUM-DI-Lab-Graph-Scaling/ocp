@@ -56,14 +56,21 @@ class Profiler:
 
         self.id = ids[0]
         self.ds_stage = 0
+        additional_flags = []
         if self.deepspeed_config:
             with open(self.deepspeed_config) as ds_f:
                 ds_config = json.load(ds_f)
                 self.ds_stage = ds_config["zero_optimization"]["stage"]
 
+                if "offload_optimizer" in ds_config["zero_optimization"]:
+                    offloading_device = ds_config["zero_optimization"][
+                        "offload_optimizer"
+                    ]["device"]
+                    additional_flags.append(f"{offloading_device}Offloading")
+
         base_path = (
             self.dir_path
-            / f"{str(self.id)}_stage{self.ds_stage}_{distutils.get_world_size()}gpus"
+            / f"{str(self.id)}_stage{self.ds_stage}_{distutils.get_world_size()}gpus{'_' + '_'.join(additional_flags)}"
         )
         self.runtime_path = Path(str(base_path) + "_runtimes.csv")
         self.resource_path = Path(str(base_path) + "_resources.csv")

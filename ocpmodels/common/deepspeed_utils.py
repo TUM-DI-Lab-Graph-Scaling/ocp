@@ -32,3 +32,41 @@ def deepspeed_convert_type(x, deepspeed_config=None):
                 return x.bfloat16()
             else:
                 return x
+
+
+def deepspeed_trainer_forward(func):
+    def inner(self, batch_list):
+        with open(self.config["deepspeed_config"], "r") as config_file:
+            config = json.load(config_file)
+            if (
+                "zero_optimization" in config
+                and config["zero_optimization"]["stage"] == 3
+            ):
+                # do batch_list conversion
+                new_batch_list = recursive_batch_wrap(batch_list)
+                return func(self, new_batch_list)
+            else:
+                return func(self, batch_list)
+
+    return inner
+
+
+def recursive_batch_wrap(batch_list):
+    if isinstance(batch_list, (list, tuple)):
+        for i, batch_list_item in enumerate(batch_list):
+            batch_list[i] = recursive_batch_wrap(batch_list_item)
+        return batch_list
+    elif isinstance(batch_list, Batch):
+        return Stage3BatchWrapper(batch_list)
+
+
+class Stage3BatchWrapper(dict):
+    def __init__(self, batch):
+        super().__init__(batch.to_dict())
+        self._batch = batch
+
+    def __getattr__(self, attribute):
+        result = getattr(self._batch, attribute)
+        if isinstance(result, Batch):
+            wrapped_result = Stage3BatchWrapper(result)
+            return wrapped_result

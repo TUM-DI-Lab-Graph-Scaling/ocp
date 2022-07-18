@@ -120,7 +120,12 @@ class ExponentialMovingAverage:
         """
         parameters = self._get_parameters(parameters)
         for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.data)
+            if self.deepspeed_stage_3:
+                # Gather parameters if ZeRO stage 3 activated
+                with deepspeed.zero.GatheredParameters([s_param, param]):
+                    param.data.copy_(s_param.data)
+            else:
+                param.data.copy_(s_param.data)
 
     def store(
         self, parameters: Optional[Iterable[torch.nn.Parameter]] = None
@@ -154,7 +159,12 @@ class ExponentialMovingAverage:
         """
         parameters = self._get_parameters(parameters)
         for c_param, param in zip(self.collected_params, parameters):
-            param.data.copy_(c_param.data)
+            if self.deepspeed_stage_3:
+                # Gather parameters if ZeRO stage 3 activated
+                with deepspeed.zero.GatheredParameters([c_param, param]):
+                    param.data.copy_(c_param.data)
+            else:
+                param.data.copy_(c_param.data)
 
     def state_dict(self) -> dict:
         r"""Returns the state of the ExponentialMovingAverage as a dict."""

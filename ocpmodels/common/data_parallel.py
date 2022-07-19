@@ -56,9 +56,7 @@ class OCPDataParallel(torch.nn.DataParallel):
             return self.module(batch_list[0])
 
         if len(self.device_ids) == 1:
-            x = batch_list[0]
-            y = x.to(f"cuda:{self.device_ids[0]}")
-            return self.module(y)
+            return self.module(batch_list[0].to(f"cuda:{self.device_ids[0]}"))
 
         for t in chain(self.module.parameters(), self.module.buffers()):
             if t.device != self.src_device:

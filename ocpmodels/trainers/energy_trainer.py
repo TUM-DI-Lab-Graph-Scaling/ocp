@@ -13,6 +13,7 @@ import torch_geometric
 from tqdm import tqdm
 
 from ocpmodels.common import distutils
+from ocpmodels.common.deepspeed_utils import deepspeed_trainer_forward
 from ocpmodels.common.registry import registry
 from ocpmodels.tracking import profiler
 from ocpmodels.tracking.profiler import (
@@ -334,6 +335,7 @@ class EnergyTrainer(BaseTrainer):
             self.test_dataset.close_db()
 
     @profiler_phase(Phase.FORWARD)
+    @deepspeed_trainer_forward
     def _forward(self, batch_list):
         output = self.model(batch_list)
 

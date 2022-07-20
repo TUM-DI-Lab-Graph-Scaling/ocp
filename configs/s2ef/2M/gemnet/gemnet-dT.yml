@@ -46,7 +46,7 @@ optim:
   mode: min
   factor: 0.8
   patience: 3
-  max_epochs: 7
+  max_epochs: 5
   force_coefficient: 100
   energy_coefficient: 1
   ema_decay: 0.999
@@ -57,4 +57,4 @@ optim:
 profiler:
   enabled: True
   metrics_path: metrics
-  resource_poll_interval: 20
+  resource_poll_interval: 180

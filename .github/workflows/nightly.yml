@@ -1,0 +1,44 @@
+name: Nightly OCP benchmarks
+on:
+  schedule:
+    - cron: '30 23 * * *'
+  workflow_run:
+    workflows:
+      - "Nightly OCP benchmarks"
+    types:
+      - completed
+
+concurrency: lundquist
+
+jobs:
+  run_ocp_benchmarks:
+    runs-on: [self-hosted, lundquist]
+    steps:
+      - name: Get current time
+        run: echo "HOUR=$(date +'%H')" >> $GITHUB_ENV
+      - name: Cancel after new runs after 1 PM
+        uses: andymckay/cancel-action@0.2
+        if: env.HOUR > 11 && env.HOUR < 23
+      - uses: actions/checkout@v3
+      - name: Execute OCP benchmark
+        env:
+          PATH: /usr/local/bin:$PATH
+          LD_LIBRARY_PATH: /usr/local/cuda-11:1/lib64:/usr/local/extras/CUPTI/lib64:/usr/local/lib:$LD_LIBRARY_PATH
+          CUDADIR: /usr/local/cuda-11:1
+          CUDA_HOME: /usr/local/cuda-11:1
+          NCCL_P2P_LEVEL: PIX
+        run: |
+          NUM_GPUS=$(head -1 configs/nightly-runs.csv | cut -d',' -f1)
+          CONFIG_PATH=$(head -1 configs/nightly-runs.csv | cut -d',' -f2)
+          DS_CONFIG_PATH=$(head -1 configs/nightly-runs.csv | cut -d',' -f3)
+
+          python -u -m torch.distributed.launch --nproc_per_node=$NUM_GPUS main.py \
+            --distributed --num-gpus $NUM_GPUS --mode train --config-yml $CONFIG_PATH \
+            --deepspeed-config $DS_CONFIG_PATH
+      - name: Delete executed run in nightly-runs.csv
+        run: sed -i '1d' nightly-runs.csv
+      - name: Commit and push changes
+        run: |
+          git add -A
+          git commit -m "Nightly run queue update"
+          git push

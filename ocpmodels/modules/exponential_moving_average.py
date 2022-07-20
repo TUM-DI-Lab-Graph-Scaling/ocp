@@ -6,7 +6,6 @@ https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py (MIT license)
 from __future__ import division, unicode_literals
 
 import copy
-import json
 import weakref
 from typing import Iterable, Optional
 

@@ -1,12 +1,9 @@
-name: Nightly OCP benchmarks
+name: Nightly OCP runs
 on:
   schedule:
-    - cron: '30 23 * * *'
-  workflow_run:
-    workflows:
-      - "Nightly OCP benchmarks"
-    types:
-      - completed
+    - cron: '0 23 * * *'
+    - cron: '0 3 * * *'
+    - cron: '0 7 * * *'
 
 concurrency: lundquist
 
@@ -36,7 +33,7 @@ jobs:
             --distributed --num-gpus $NUM_GPUS --mode train --config-yml $CONFIG_PATH \
             --deepspeed-config $DS_CONFIG_PATH
       - name: Delete executed run in nightly-runs.csv
-        run: sed -i '1d' nightly-runs.csv
+        run: sed -i '1d' configs/nightly-runs.csv
       - name: Commit and push changes
         run: |
           git add -A

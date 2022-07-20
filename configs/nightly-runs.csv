@@ -1,2 +1,3 @@
 8,configs/s2ef/2M/gemnet/gemnet-dT.yml,configs/s2ef/2M/gemnet/ds_config.json
 8,configs/s2ef/2M/gemnet/gemnet-oc.yml,configs/s2ef/2M/gemnet/ds_config.json
+8,configs/s2ef/2M/cgcnn/cgcnn.yml,configs/s2ef/2M/cgcnn/ds_config.json

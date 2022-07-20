@@ -66,7 +66,17 @@ class Profiler:
                     offloading_device = ds_config["zero_optimization"][
                         "offload_optimizer"
                     ]["device"]
-                    additional_flags.append(f"{offloading_device}Offloading")
+                    additional_flags.append(
+                        f"offloadOptimizer[{offloading_device}]"
+                    )
+
+                if "offload_param" in ds_config["zero_optimization"]:
+                    offloading_device = ds_config["zero_optimization"][
+                        "offload_param"
+                    ]["device"]
+                    additional_flags.append(
+                        f"offloadParam[{offloading_device}]"
+                    )
 
         base_path = (
             self.dir_path

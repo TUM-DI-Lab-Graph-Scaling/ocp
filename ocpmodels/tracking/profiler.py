@@ -67,7 +67,7 @@ class Profiler:
                         "offload_optimizer"
                     ]["device"]
                     additional_flags.append(
-                        f"offloadOptimizer[{offloading_device}]"
+                        f"_offloadOptimizer[{offloading_device}]"
                     )
 
                 if "offload_param" in ds_config["zero_optimization"]:
@@ -75,12 +75,12 @@ class Profiler:
                         "offload_param"
                     ]["device"]
                     additional_flags.append(
-                        f"offloadParam[{offloading_device}]"
+                        f"_offloadParam[{offloading_device}]"
                     )
 
         base_path = (
             self.dir_path
-            / f"{str(self.id)}_stage{self.ds_stage}_{distutils.get_world_size()}gpus{'_' + '_'.join(additional_flags)}"
+            / f"{str(self.id)}_stage{self.ds_stage}_{distutils.get_world_size()}gpus{''.join(additional_flags)}"
         )
         self.runtime_path = Path(str(base_path) + "_runtimes.csv")
         self.resource_path = Path(str(base_path) + "_resources.csv")

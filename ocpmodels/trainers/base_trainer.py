@@ -20,6 +20,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import yaml
+from deepspeed.runtime.zero.stage3 import (
+    estimate_zero3_model_states_mem_needs_all_live,
+)
+from deepspeed.runtime.zero.stage_1_and_2 import (
+    estimate_zero2_model_states_mem_needs_all_live,
+)
 from sklearn.metrics import log_loss
 from torch.nn.parallel.distributed import DistributedDataParallel
 from torch.utils.data import DataLoader
@@ -217,14 +223,34 @@ class BaseTrainer(ABC):
         """
         with open(self.config["deepspeed_config"], "r") as config_file:
             config = json.load(config_file)
+            # Log estimates of memory usage requirements as calculated by DeepSpeed.
+            if distutils.is_master():
+                if "zero_optimization" in config:
+                    if config["zero_optimization"]["stage"] == 3:
+                        estimate_zero3_model_states_mem_needs_all_live(
+                            self.model,
+                            num_gpus_per_node=distutils.get_world_size(),
+                        )
+                    else:
+                        estimate_zero2_model_states_mem_needs_all_live(
+                            self.model,
+                            num_gpus_per_node=distutils.get_world_size(),
+                        )
+
+            # Register parameters as external to gather them in cases they
+            # are directly accessed.
             if (
                 "zero_optimization" in config
                 and config["zero_optimization"]["stage"] == 3
             ):
-                for param in self.model.parameters():
-                    deepspeed.zero.register_external_parameter(
-                        self.model, param
-                    )
+                # for param in self.model.parameters():
+                #     deepspeed.zero.register_external_parameter(
+                #         self.model, param
+                #     )
+                pass
+            # Initialize the model and optimizer to DeepSpeed. If the optimizer is
+            # specified in the DeepSpeed config, this one will be used and the OCP
+            # optimizer will be discarded.
             if "optimizer" in config:
                 self.model, self.optimizer, _, _ = deepspeed.initialize(
                     config=self.config["deepspeed_config"],
@@ -238,7 +264,8 @@ class BaseTrainer(ABC):
                     model_parameters=self.model.parameters(),
                     optimizer=self.optimizer,
                 )
-        logging.info("Deepspeed model successfully initialized!")
+            if distutils.is_master():
+                logging.info("Deepspeed model successfully initialized!")
 
     def load_seed_from_config(self):
         # https://pytorch.org/docs/stable/notes/randomness.html

@@ -58,6 +58,12 @@ def deepspeed_trainer_forward(func):
     """
 
     def inner(self, batch_list):
+        if (
+            "deepspeed_config" not in self.config
+            or self.config["deepspeed_config"] is None
+        ):
+            return func(self, batch_list)
+
         with open(self.config["deepspeed_config"], "r") as config_file:
             config = json.load(config_file)
             if (

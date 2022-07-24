@@ -314,7 +314,10 @@ class ForcesTrainer(BaseTrainer):
 
         with ExitStack() as stack:
             profiler_enabled = self.config["profiler"]["enabled"]
-            use_torch_profiler = self.config["profiler"]["use_torch_profiler"]
+            use_torch_profiler = (
+                "use_torch_profiler" in self.config["profiler"]
+                and self.config["profiler"]["use_torch_profiler"]
+            )
 
             if profiler_enabled:
                 profiler = stack.enter_context(

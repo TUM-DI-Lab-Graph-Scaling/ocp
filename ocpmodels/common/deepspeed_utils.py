@@ -46,15 +46,17 @@ def deepspeed_convert_type(x, deepspeed_config=None):
 
 def deepspeed_trainer_forward(func):
     """
-    Decorator for a forward function using inputs of type torch_geometric.data.batch.Batch. This object is not suited for
-    DeepSpeed Stage 3 training and using it as input of a forward function will cause multiple warning printouts since the
-    tensors in the object are not detected by DeepSpeed. Although training seems to work without wrapping the Batch objects,
-    the countless warnings might be bothersome. The Batch objects are wrapped in such a way that they are of type dict as
-    well. As a dict, the parameters can be detected by DeepSpeed.
+    Decorator for a forward function using inputs of type torch_geometric.data.batch.Batch.
+    This object is not suited for DeepSpeed Stage 3 training and using it as input of a
+    forward function will cause multiple warning printouts since the tensors in the object
+    are not detected by DeepSpeed. Although training seems to work without wrapping the Batch
+    objects, the countless warnings might be bothersome. The Batch objects are wrapped in such
+    a way that they are of type dict as well. As a dict, the parameters can be detected by
+    DeepSpeed.
 
     Args:
-        func: Method of a class taking self and batch_list (aribitrarily nested lists/tuples of torch_geometric.data.batch.Batch
-        objects).
+        func: Method of a class taking self and batch_list (aribitrarily nested lists/tuples
+            of torch_geometric.data.batch.Batch objects).
     """
 
     def inner(self, batch_list):
@@ -75,8 +77,8 @@ def deepspeed_trainer_forward(func):
 
 def recursive_batch_wrap(batch_list):
     """
-    Wrap an arbitrarily nested list/tuple of torch_geometric.data.batch.Batch objects as Stage3BatchWrapper so that they
-    can be used just like dicts as well.
+    Wrap an arbitrarily nested list/tuple of torch_geometric.data.batch.Batch objects
+    as Stage3BatchWrapper so that they can be used just like dicts as well.
     """
     if isinstance(batch_list, (list, tuple)):
         for i, batch_list_item in enumerate(batch_list):

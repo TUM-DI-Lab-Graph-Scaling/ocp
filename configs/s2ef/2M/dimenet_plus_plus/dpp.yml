@@ -33,10 +33,11 @@ optim:
     - 41666
   warmup_steps: 10416
   warmup_factor: 0.2
-  max_epochs: 7
+  max_epochs: 5
   force_coefficient: 50
 
 profiler:
   enabled: True
   metrics_path: metrics
   resource_poll_interval: 20
+  use_torch_profiler: False

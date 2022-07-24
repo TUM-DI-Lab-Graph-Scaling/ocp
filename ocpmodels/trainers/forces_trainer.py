@@ -13,6 +13,7 @@ from contextlib import ExitStack
 import numpy as np
 import torch
 import torch_geometric
+from torch._C._autograd import ProfilerActivity
 from tqdm import tqdm
 
 from ocpmodels.common import distutils
@@ -313,6 +314,8 @@ class ForcesTrainer(BaseTrainer):
 
         with ExitStack() as stack:
             profiler_enabled = self.config["profiler"]["enabled"]
+            use_torch_profiler = self.config["profiler"]["use_torch_profiler"]
+
             if profiler_enabled:
                 profiler = stack.enter_context(
                     Profiler(
@@ -324,20 +327,23 @@ class ForcesTrainer(BaseTrainer):
                 )
                 set_profiler(profiler)
 
-                torch_profiler = stack.enter_context(
-                    torch.profiler.profile(
-                        schedule=torch.profiler.schedule(
-                            wait=2, warmup=2, active=6, repeat=1
-                        ),
-                        on_trace_ready=tensorboard_trace_handler,
-                        with_stack=True,
-                        profile_memory=True,
-                        activities=[
-                            ProfilerActivity.CPU,
-                            ProfilerActivity.CUDA,
-                        ],
+                if use_torch_profiler:
+                    torch_profiler = stack.enter_context(
+                        torch.profiler.profile(
+                            schedule=torch.profiler.schedule(
+                                wait=2, warmup=2, active=6, repeat=1
+                            ),
+                            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                                f"./logs/{self.config['model']}"
+                            ),
+                            with_stack=True,
+                            profile_memory=True,
+                            activities=[
+                                ProfilerActivity.CPU,
+                                ProfilerActivity.CUDA,
+                            ],
+                        )
                     )
-                )
 
             # Calculate start_epoch from step instead of loading the epoch number
             # to prevent inconsistencies due to different batch size in checkpoint.
@@ -373,7 +379,7 @@ class ForcesTrainer(BaseTrainer):
                         loss = self._compute_loss(out, batch)
                     loss = self.scaler.scale(loss) if self.scaler else loss
                     self._backward(loss)
-                    if profiler_enabled:
+                    if profiler_enabled and use_torch_profiler:
                         torch_profiler.step()
                     scale = self.scaler.get_scale() if self.scaler else 1.0
 

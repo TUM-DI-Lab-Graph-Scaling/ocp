@@ -34,4 +34,5 @@ optim:
 profiler:
   enabled: True
   metrics_path: metrics
-  resource_poll_interval: 20
+  resource_poll_interval: 10
+  use_torch_profiler: True

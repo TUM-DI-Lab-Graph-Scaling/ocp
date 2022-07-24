@@ -1,5 +1,5 @@
 {
-  "train_batch_size": 32,
+  "train_batch_size": 8,
   "gradient_accumulation_steps": 1,
   "fp16": {
     "enabled": false
@@ -8,7 +8,7 @@
     "enabled": true
   },
   "zero_optimization": {
-    "stage": 2,
+    "stage": 1,
     "contiguous_gradients": true
   }
 }

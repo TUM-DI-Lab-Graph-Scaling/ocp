@@ -1,4 +1,5 @@
 import csv
+import datetime
 import json
 import shutil
 import time
@@ -84,6 +85,7 @@ class Profiler:
         )
         self.runtime_path = Path(str(base_path) + "_runtimes.csv")
         self.resource_path = Path(str(base_path) + "_resources.csv")
+        self.torch_cuda_path = Path(str(base_path) + "_torch_cuda.csv")
 
         if self.deepspeed_config is not None and distutils.is_master():
             self.deepspeed_config_path = self.dir_path / (
@@ -93,8 +95,16 @@ class Profiler:
 
         self.runtime_file = open(self.runtime_path, "a")
         self.resource_file = open(self.resource_path, "a")
+        self.torch_cuda_file = open(self.torch_cuda_path, "a")
+
+        if distutils.is_master():
+            self.write_runtime_headers()
+            self.write_torch_cuda_headers()
 
         self.runtime_writer = csv.writer(self.runtime_file, delimiter=",")
+        self.torch_cuda_writer = csv.writer(
+            self.torch_cuda_file, delimiter=","
+        )
 
         if distutils.is_master():
             self.resource_monitor_thread = ResourceMonitorThread(
@@ -103,9 +113,40 @@ class Profiler:
             self.resource_monitor_thread.add_monitor(CPUMemoryMonitor())
             self.resource_monitor_thread.add_monitor(GPUMemoryMonitor())
             self.resource_monitor_thread.start()
+
+        distutils.synchronize()
         return self
 
-    def write_stats(self):
+    def write_runtime_headers(self):
+        self.runtime_file.write(
+            ",".join(
+                [
+                    "rank",
+                    "epoch",
+                    "epoch_time",
+                    "dataloading_time",
+                    "forward_time",
+                    "backward_time",
+                ]
+            )
+        )
+        self.runtime_file.flush()
+
+    def write_torch_cuda_headers(self):
+        self.torch_cuda_file.write(
+            ",".join(
+                [
+                    "datetime",
+                    "epoch",
+                    "rank",
+                    "gpu_memory_allocated",
+                    "gpu_memory_reserved",
+                ]
+            )
+        )
+        self.runtime_file.flush()
+
+    def write_runtime_stats(self):
         row = [
             distutils.get_rank(),
             self.epoch,
@@ -119,6 +160,21 @@ class Profiler:
         for t in self.phase_timers.values():
             t.reset()
 
+    def write_torch_cuda_stats(self):
+        row = [
+            datetime.datetime.now(),
+            self.epoch,
+            distutils.get_rank(),
+            torch.cuda.memory_allocated(),
+            torch.cuda.memory_reserved(),
+        ]
+
+        self.torch_cuda_writer.writerow(row)
+        self.torch_cuda_file.flush()
+
+    def record_gpu_memory(self):
+        self.write_torch_cuda_stats()
+
     def start_epoch(self):
         if distutils.is_master():
             self.resource_monitor_thread.epoch = self.epoch
@@ -129,7 +185,7 @@ class Profiler:
         self.epoch_timer.stop()
         if distutils.is_master():
             self.resource_monitor_thread.log_results = False
-        self.write_stats()
+        self.write_runtime_stats()
         self.epoch += 1
 
     def start_phase(self, phase):

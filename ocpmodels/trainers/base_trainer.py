@@ -213,7 +213,7 @@ class BaseTrainer(ABC):
         self.load_loss()
         self.load_optimizer()
         self.load_extras()
-        if self.config["deepspeed_config"]:
+        if self.config["deepspeed_config"] is not None:
             self.deepspeed_initialize()
 
     def deepspeed_initialize(self):
@@ -559,6 +559,7 @@ class BaseTrainer(ABC):
         self.ema_decay = self.config["optim"].get("ema_decay")
         if self.ema_decay:
             # Check if parameter gathering is needed (if stage 3 activated)
+            deepspeed_stage_3 = False
             if self.config["deepspeed_config"]:
                 with open(self.config["deepspeed_config"], "r") as config_file:
                     config = json.load(config_file)

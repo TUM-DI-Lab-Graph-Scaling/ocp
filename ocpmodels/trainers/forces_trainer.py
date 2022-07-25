@@ -314,10 +314,7 @@ class ForcesTrainer(BaseTrainer):
 
         with ExitStack() as stack:
             profiler_enabled = self.config["profiler"]["enabled"]
-            use_torch_profiler = (
-                "use_torch_profiler" in self.config["profiler"]
-                and self.config["profiler"]["use_torch_profiler"]
-            )
+            use_torch_profiler = "torch_profiler" in self.config["profiler"]
 
             if profiler_enabled:
                 profiler = stack.enter_context(
@@ -334,10 +331,23 @@ class ForcesTrainer(BaseTrainer):
                     torch_profiler = stack.enter_context(
                         torch.profiler.profile(
                             schedule=torch.profiler.schedule(
-                                wait=2, warmup=2, active=6, repeat=1
+                                wait=self.config["profiler"]["torch_profiler"][
+                                    "schedule"
+                                ]["wait"],
+                                warmup=self.config["profiler"][
+                                    "torch_profiler"
+                                ]["schedule"]["warmup"],
+                                active=self.config["profiler"][
+                                    "torch_profiler"
+                                ]["schedule"]["active"],
+                                repeat=self.config["profiler"][
+                                    "torch_profiler"
+                                ]["schedule"]["repeat"],
                             ),
                             on_trace_ready=torch.profiler.tensorboard_trace_handler(
-                                f"./logs/{self.config['model']}"
+                                self.config["profiler"]["torch_profiler"][
+                                    "log_path"
+                                ]
                             ),
                             with_stack=True,
                             profile_memory=True,
@@ -367,6 +377,9 @@ class ForcesTrainer(BaseTrainer):
                     self.step = epoch_int * len(self.train_loader) + i + 1
                     self.model.train()
 
+                    if profiler_enabled:
+                        profiler.record_gpu_memory()
+
                     # Get a batch.
                     if profiler_enabled:
                         profiler.start_phase(Phase.DATALOADING)
@@ -382,8 +395,10 @@ class ForcesTrainer(BaseTrainer):
                         loss = self._compute_loss(out, batch)
                     loss = self.scaler.scale(loss) if self.scaler else loss
                     self._backward(loss)
-                    if profiler_enabled and use_torch_profiler:
-                        torch_profiler.step()
+                    if profiler_enabled:
+                        profiler.record_gpu_memory()
+                        if use_torch_profiler:
+                            torch_profiler.step()
                     scale = self.scaler.get_scale() if self.scaler else 1.0
 
                     # Compute metrics.
@@ -488,7 +503,7 @@ class ForcesTrainer(BaseTrainer):
             self.test_dataset.close_db()
 
     @profiler_phase(Phase.FORWARD)
-    @deepspeed_trainer_forward
+    # @deepspeed_trainer_forward
     def _forward(self, batch_list):
         # forward pass.
         if self.config["model_attributes"].get("regress_forces", True):

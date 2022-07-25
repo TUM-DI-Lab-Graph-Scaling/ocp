@@ -1,5 +1,6 @@
 import json
 
+from torch import Tensor
 from torch_geometric.data.batch import Batch
 
 
@@ -48,9 +49,9 @@ def deepspeed_trainer_forward(func):
     """
     Decorator for a forward function using inputs of type torch_geometric.data.batch.Batch. This object is not suited for
     DeepSpeed Stage 3 training and using it as input of a forward function will cause multiple warning printouts since the
-    tensors in the object are not detected by DeepSpeed. Although training seems to work without wrapping the Batch objects,
-    the countless warnings might be bothersome. The Batch objects are wrapped in such a way that they are of type dict as
-    well. As a dict, the parameters can be detected by DeepSpeed.
+    tensors in the object are not detected by DeepSpeed. Although training seems to work without converting the Batch objects,
+    the countless warnings might be bothersome. The Batch objects are converted in such a way that their type is a subclass
+    of dict which implements all necessary operations performed on the data during training.
 
     Args:
         func: Method of a class taking self and batch_list (aribitrarily nested lists/tuples of torch_geometric.data.batch.Batch
@@ -71,7 +72,7 @@ def deepspeed_trainer_forward(func):
                 and config["zero_optimization"]["stage"] == 3
             ):
                 # do batch_list conversion
-                new_batch_list = recursive_batch_wrap(batch_list)
+                new_batch_list = recursive_batch_to_dict(batch_list)
                 return func(self, new_batch_list)
             else:
                 return func(self, batch_list)
@@ -79,30 +80,63 @@ def deepspeed_trainer_forward(func):
     return inner
 
 
-def recursive_batch_wrap(batch_list):
+def recursive_batch_to_dict(batch_list):
     """
-    Wrap an arbitrarily nested list/tuple of torch_geometric.data.batch.Batch objects as Stage3BatchWrapper so that they
+    Convert an arbitrarily nested list/tuple of torch_geometric.data.batch.Batch objects as BatchDict so that they
     can be used just like dicts as well.
     """
     if isinstance(batch_list, (list, tuple)):
         for i, batch_list_item in enumerate(batch_list):
-            batch_list[i] = recursive_batch_wrap(batch_list_item)
+            batch_list[i] = recursive_batch_to_dict(batch_list_item)
         return batch_list
     elif isinstance(batch_list, Batch):
-        return Stage3BatchWrapper(batch_list)
+        return BatchDict(batch_list)
 
 
-class Stage3BatchWrapper(dict):
+class BatchDict(dict):
     """
-    Wrapper for a torch_geometric.data.batch.Batch object enabling dict functionality.
+    Dict for forward pass input tensors that implements all operations needed on the data for training.
+    Specifically, accessing the individual items as attributes is possible as well as pushing the dict
+    with all of its tensor data to a different device.
     """
 
-    def __init__(self, batch):
-        super().__init__(batch.to_dict())
-        self._batch = batch
+    def __init__(self, data):
+        """
+        Initialize the dict. Can be initialized from a torch_geometric.data.batch.Batch object or from
+        an existing dict.
+        """
+        if isinstance(data, dict):
+            super().__init__(data)
+        elif isinstance(data, Batch):
+            super().__init__(data.to_dict())
+        else:
+            raise ValueError(
+                f"BatchDict cannot be initialized from a {type(data)} object!"
+            )
 
-    def __getattr__(self, attribute):
-        return getattr(self._batch, attribute)
+    def __getattr__(self, key):
+        return self[key]
 
-    def to(self, device):
-        return Stage3BatchWrapper(self._batch.to(device))
+    def __setattr__(self, key, value):
+        self[key] = value
+
+    def __delattr__(self, key):
+        del self[key]
+
+    def to(self, device, *args, **kwargs):
+        """
+        Return an equivalent instance of BatchDict whose tensors contained in it are stored on the specified device.
+        """
+        return BatchDict(
+            {
+                key: self._attribute_to_device(value, device, *args, **kwargs)
+                for key, value in self.items()
+            }
+        )
+
+    def _attribute_to_device(self, object, device, *args, **kwargs):
+        return (
+            object.to(device, *args, **kwargs)
+            if type(object) is Tensor
+            else object
+        )

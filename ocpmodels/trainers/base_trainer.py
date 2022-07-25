@@ -243,11 +243,10 @@ class BaseTrainer(ABC):
                 "zero_optimization" in config
                 and config["zero_optimization"]["stage"] == 3
             ):
-                # for param in self.model.parameters():
-                #     deepspeed.zero.register_external_parameter(
-                #         self.model, param
-                #     )
-                pass
+                for param in self.model.parameters():
+                    deepspeed.zero.register_external_parameter(
+                        self.model, param
+                    )
             # Initialize the model and optimizer to DeepSpeed. If the optimizer is
             # specified in the DeepSpeed config, this one will be used and the OCP
             # optimizer will be discarded.

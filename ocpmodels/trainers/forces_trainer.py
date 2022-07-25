@@ -503,7 +503,7 @@ class ForcesTrainer(BaseTrainer):
             self.test_dataset.close_db()
 
     @profiler_phase(Phase.FORWARD)
-    # @deepspeed_trainer_forward
+    @deepspeed_trainer_forward
     def _forward(self, batch_list):
         # forward pass.
         if self.config["model_attributes"].get("regress_forces", True):

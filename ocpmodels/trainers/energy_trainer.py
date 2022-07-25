@@ -375,7 +375,7 @@ class EnergyTrainer(BaseTrainer):
             self.test_dataset.close_db()
 
     @profiler_phase(Phase.FORWARD)
-    # @deepspeed_trainer_forward
+    @deepspeed_trainer_forward
     def _forward(self, batch_list):
         output = self.model(batch_list)
 

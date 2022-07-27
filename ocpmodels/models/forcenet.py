@@ -506,24 +506,18 @@ class ForceNet(BaseModel):
             )
 
         # Initialize data for DeepSpeed
-        h, edge_weight = initialize_deepspeed_data(
-            h, edge_weight, deepspeed_config=self.deepspeed_config
-        )
+        h, edge_weight = initialize_deepspeed_data(h, edge_weight)
 
         if "sph" in self.basis_type:
             # Initialize data for DeepSpeed
             raw_edge_attr, edge_attr_sph = initialize_deepspeed_data(
-                raw_edge_attr,
-                edge_attr_sph,
-                deepspeed_config=self.deepspeed_config,
+                raw_edge_attr, edge_attr_sph
             )
             # forward edge_attr
             edge_attr = self.basis_fun(raw_edge_attr, edge_attr_sph)
         else:
             # Initialize data for DeepSpeed
-            raw_edge_attr = initialize_deepspeed_data(
-                raw_edge_attr, deepspeed_config=self.deepspeed_config
-            )
+            raw_edge_attr = initialize_deepspeed_data(raw_edge_attr)
             # forward edge_attr
             edge_attr = self.basis_fun(raw_edge_attr)
 

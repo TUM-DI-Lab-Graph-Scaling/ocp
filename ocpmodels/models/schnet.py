@@ -123,7 +123,7 @@ class SchNetWrap(SchNet):
 
             # Initialize data for DeepSpeed
             edge_weight, edge_attr = initialize_deepspeed_data(
-                edge_weight, edge_attr, deepspeed_config=self.deepspeed_config
+                edge_weight, edge_attr
             )
 
             h = self.embedding(z)

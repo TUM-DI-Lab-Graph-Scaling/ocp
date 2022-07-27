@@ -38,6 +38,7 @@ from ocpmodels.common.data_parallel import (
     OCPDataParallel,
     ParallelCollater,
 )
+from ocpmodels.common.deepspeed_utils import initialize_deepspeed
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import save_checkpoint
 from ocpmodels.modules.evaluator import Evaluator
@@ -221,6 +222,7 @@ class BaseTrainer(ABC):
         Initialize the DeepSpeed wrappers for model and optimizer. Depending on the selected mode,
         the optimizer is either just the default one from ocp or will be overwritten by DeepSpeed.
         """
+        initialize_deepspeed(self.config["deepspeed_config"])
         with open(self.config["deepspeed_config"], "r") as config_file:
             config = json.load(config_file)
             # Log estimates of memory usage requirements as calculated by DeepSpeed.

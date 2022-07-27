@@ -1,10 +1,22 @@
 import json
+from typing import Optional
 
 from torch import Tensor
 from torch_geometric.data.batch import Batch
 
+ds_config: Optional[dict] = None
 
-def initialize_deepspeed_data(*args, deepspeed_config=None):
+
+def initialize_deepspeed(config_path):
+    global ds_config
+    if config_path is None:
+        ds_config = None
+    else:
+        with open(config_path, "r") as config_file:
+            ds_config = json.load(config_file)
+
+
+def initialize_deepspeed_data(*args):
     """
     Deepspeed initialization function for a neural network. Casts the input tensors to the data type
     that is needed by DeepSpeed for the configuration defined in self.deepspeed_config.
@@ -17,12 +29,12 @@ def initialize_deepspeed_data(*args, deepspeed_config=None):
             the information about type conversions is stored.
     """
     if len(args) > 1:
-        return (deepspeed_convert_type(x, deepspeed_config) for x in args)
+        return (deepspeed_convert_type(x) for x in args)
     elif len(args) == 1:
-        return deepspeed_convert_type(args[0], deepspeed_config)
+        return deepspeed_convert_type(args[0])
 
 
-def deepspeed_convert_type(x, deepspeed_config=None):
+def deepspeed_convert_type(x):
     """
     Converts torch tensors to the needed data type for the specified deepspeed config
     json file. If no file path is passed, just the tensor itself will be returned.
@@ -32,17 +44,16 @@ def deepspeed_convert_type(x, deepspeed_config=None):
         deepspeed_config (Path, optional): Path to the DeepSpeed config file in which
             the information about type conversions is stored.
     """
-    if deepspeed_config is None:
+    global ds_config
+    if ds_config is None:
         return x
     else:
-        with open(deepspeed_config, "r") as config_file:
-            config = json.load(config_file)
-            if "fp16" in config and config["fp16"]["enabled"]:
-                return x.half()
-            elif "bf16" in config and config["bf16"]["enabled"]:
-                return x.bfloat16()
-            else:
-                return x
+        if "fp16" in ds_config and ds_config["fp16"]["enabled"]:
+            return x.half()
+        elif "bf16" in ds_config and ds_config["bf16"]["enabled"]:
+            return x.bfloat16()
+        else:
+            return x
 
 
 def deepspeed_trainer_forward(func):
@@ -65,17 +76,16 @@ def deepspeed_trainer_forward(func):
         ):
             return func(self, batch_list)
 
-        with open(self.config["deepspeed_config"], "r") as config_file:
-            config = json.load(config_file)
-            if (
-                "zero_optimization" in config
-                and config["zero_optimization"]["stage"] == 3
-            ):
-                # do batch_list conversion
-                new_batch_list = recursive_batch_to_dict(batch_list)
-                return func(self, new_batch_list)
-            else:
-                return func(self, batch_list)
+        global ds_config
+        if (
+            "zero_optimization" in ds_config
+            and ds_config["zero_optimization"]["stage"] == 3
+        ):
+            # do batch_list conversion
+            new_batch_list = recursive_batch_to_dict(batch_list)
+            return func(self, new_batch_list)
+        else:
+            return func(self, batch_list)
 
     return inner
 

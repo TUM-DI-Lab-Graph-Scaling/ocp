@@ -556,9 +556,7 @@ class GemNetT(torch.nn.Module):
         cosφ_cab = inner_product_normalized(V_st[id3_ca], V_st[id3_ba])
 
         # Initialize data for DeepSpeed
-        D_st, cosφ_cab = initialize_deepspeed_data(
-            D_st, cosφ_cab, deepspeed_config=self.deepspeed_config
-        )
+        D_st, cosφ_cab = initialize_deepspeed_data(D_st, cosφ_cab)
 
         rad_cbf3, cbf3 = self.cbf_basis3(D_st, cosφ_cab, id3_ca)
 

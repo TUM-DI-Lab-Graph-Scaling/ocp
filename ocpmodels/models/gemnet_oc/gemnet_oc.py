@@ -1300,10 +1300,7 @@ class GemNetOC(ScaledModule):
                 graph["vector"],
                 graph["cell_offset"],
             ) = initialize_deepspeed_data(
-                graph["distance"],
-                graph["vector"],
-                graph["cell_offset"],
-                deepspeed_config=self.deepspeed_config,
+                graph["distance"], graph["vector"], graph["cell_offset"]
             )
 
         (

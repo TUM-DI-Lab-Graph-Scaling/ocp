@@ -159,7 +159,7 @@ class CGCNN(BaseModel):
 
         # Initialize data for DeepSpeed
         data.x, data.edge_attr = initialize_deepspeed_data(
-            data.x, data.edge_attr, deepspeed_config=self.deepspeed_config
+            data.x, data.edge_attr
         )
 
         # Forward pass through the network

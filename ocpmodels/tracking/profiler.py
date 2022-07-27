@@ -97,16 +97,15 @@ class Profiler:
         self.resource_file = open(self.resource_path, "a")
         self.torch_cuda_file = open(self.torch_cuda_path, "a")
 
-        if distutils.is_master():
-            self.write_runtime_headers()
-            self.write_torch_cuda_headers()
-
         self.runtime_writer = csv.writer(self.runtime_file, delimiter=",")
         self.torch_cuda_writer = csv.writer(
             self.torch_cuda_file, delimiter=","
         )
 
         if distutils.is_master():
+            self.write_runtime_headers()
+            self.write_torch_cuda_headers()
+
             self.resource_monitor_thread = ResourceMonitorThread(
                 self.config["resource_poll_interval"], self.resource_file
             )
@@ -114,35 +113,30 @@ class Profiler:
             self.resource_monitor_thread.add_monitor(GPUMemoryMonitor())
             self.resource_monitor_thread.start()
 
-        distutils.synchronize()
         return self
 
     def write_runtime_headers(self):
-        self.runtime_file.write(
-            ",".join(
-                [
-                    "rank",
-                    "epoch",
-                    "epoch_time",
-                    "dataloading_time",
-                    "forward_time",
-                    "backward_time",
-                ]
-            )
+        self.runtime_writer.writerow(
+            [
+                "rank",
+                "epoch",
+                "epoch_time",
+                "dataloading_time",
+                "forward_time",
+                "backward_time",
+            ]
         )
         self.runtime_file.flush()
 
     def write_torch_cuda_headers(self):
-        self.torch_cuda_file.write(
-            ",".join(
-                [
-                    "datetime",
-                    "epoch",
-                    "rank",
-                    "gpu_memory_allocated",
-                    "gpu_memory_reserved",
-                ]
-            )
+        self.torch_cuda_writer.writerow(
+            [
+                "datetime",
+                "epoch",
+                "rank",
+                "gpu_memory_allocated",
+                "gpu_memory_reserved",
+            ]
         )
         self.runtime_file.flush()
 

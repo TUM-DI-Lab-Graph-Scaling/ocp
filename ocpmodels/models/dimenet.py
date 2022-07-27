@@ -211,9 +211,7 @@ class DimeNetWrap(DimeNet):
         angle = torch.atan2(b, a)
 
         # Initialize data for DeepSpeed
-        dist, angle = initialize_deepspeed_data(
-            dist, angle, deepspeed_config=self.deepspeed_config
-        )
+        dist, angle = initialize_deepspeed_data(dist, angle)
 
         rbf = self.rbf(dist)
         sbf = self.sbf(dist, angle, idx_kj)

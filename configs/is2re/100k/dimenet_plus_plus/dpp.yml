@@ -3,9 +3,9 @@ includes:
 
 model:
   name: dimenetplusplus
-  hidden_channels: 256
-  out_emb_channels: 192
-  num_blocks: 3
+  hidden_channels: 2048
+  out_emb_channels: 1536
+  num_blocks: 4
   cutoff: 6.0
   num_radial: 6
   num_spherical: 7
@@ -32,4 +32,9 @@ optim:
     - 600000
   warmup_steps: 100000
   warmup_factor: 0.2
-  max_epochs: 20
+  max_epochs: 1
+
+profiler:
+  enabled: True
+  metrics_path: metrics
+  resource_poll_interval: 2

@@ -16,4 +16,4 @@ export NCCL_P2P_LEVEL=PIX
 
 srun python -u -m torch.distributed.launch --nproc_per_node=8 main.py \
   --distributed --num-gpus 8 --mode train --config-yml configs/s2ef/200k/dimenet_plus_plus/dpp.yml \
-  --deepspeed-config configs/s2ef/200k/dimenet_plus_plus/ds_config.json
+  --deepspeed-config configs/s2ef/200k/dimenet_plus_plus/ds_config_stage2.json

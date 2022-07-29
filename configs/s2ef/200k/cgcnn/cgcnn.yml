@@ -31,6 +31,6 @@ optim:
   force_coefficient: 10
 
 profiler:
-  enabled: True
+  enabled: False
   metrics_path: metrics
   resource_poll_interval: 20
